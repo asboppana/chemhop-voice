@@ -4,7 +4,7 @@ Controller for ADMET prediction operations.
 Handles the business logic for predicting ADMET properties of molecules
 using SMILES strings and interfacing with the ADMET AI tool.
 """
-from src.services.mcp.admet_ai.tools.admet_ai_tool import ADMETAITool
+from src.services.mcp.admet_tools.admet_ai_tool import ADMETAITool
 from src.api.models.admet import ADMETResponse
 
 

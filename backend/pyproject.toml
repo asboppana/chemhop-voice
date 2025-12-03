@@ -36,19 +36,20 @@ dependencies = [
     "typer>=0.12.5,<0.16.0",
     "elevenlabs>=1.0.0",
     # Chemistry/SMARTS processing
-    "pandas>=2.3.3",
+    "pandas<=2.2.0",
     "rdkit>=2025.9.3",
     "tqdm>=4.67.1",
     "realtime>=2.24.0",
-    "torch>=2.9.1",
+    "torch==2.5.0",
     "chemfunc>=1.0.12",
-    "chemprop>=2.2.1",
+    "chemprop==1.6.1",
     "lightning>=2.6.0",
-    "admet-ai>=1.0.0",
+    "admet-ai==1.4.0",
     # Voice Agent
-    "mcp>=1.0.0",
+    "mcp[cli]>=1.0.0",
     "elevenlabs",
     "fastmcp",
+    "numpy==1.26.4",
 ]
 
 [build-system]
