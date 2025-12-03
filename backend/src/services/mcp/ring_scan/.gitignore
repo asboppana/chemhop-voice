@@ -1,0 +1,6 @@
+# Large data files - should be downloaded separately
+ring_data/novel_rings/rings.smi
+ring_data/novel_rings/rings.npy
+ring_data/novel_rings/invalid-*.npy
+ring_data/novel_rings/clusters/cluster-centroids-packed.pkl
+ring_data/novel_rings/clusters/input-fps/
