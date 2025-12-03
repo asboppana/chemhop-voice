@@ -1,0 +1,24 @@
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: us_hacks
+    container_name: us_hacks_backend_local
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.local
+    environment:
+      - SYSTEM_ENVIRONMENT=local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # Mount code for hot reload during development
+      - ./src:/app/src/src
+      - ./main.py:/app/src/main.py

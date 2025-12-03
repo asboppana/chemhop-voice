@@ -1,6 +1,6 @@
 """Test script to verify SQLAlchemy queries work correctly."""
 
-from models import AnnotatedPattern, get_session
+from .models import AnnotatedPattern, get_session
 from rdkit import Chem
 
 def test_database_query():
@@ -29,7 +29,7 @@ def test_database_query():
         # Test 4: Test SmartChemist class
         print("\n✓ Testing SmartChemist class...")
         
-        from tools.smart_chemist import SmartChemist
+        from .tools.smart_chemist import SmartChemist
         import json
         
         chemist = SmartChemist()

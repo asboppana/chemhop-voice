@@ -3,8 +3,8 @@ import pandas as pd
 from rdkit import Chem
 from tqdm import tqdm
 
-# Import models and database setup
-from models import AnnotatedPattern, Base, engine, get_session
+# Import models and database setup using relative imports
+from .models import AnnotatedPattern, Base, engine, get_session
 
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent

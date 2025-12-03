@@ -7,10 +7,8 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from pathlib import Path
 
-# Import the database models
-import sys
-sys.path.append(str(Path(__file__).parent.parent))
-from models import AnnotatedPattern, get_session
+# Import the database models using relative imports
+from ..models import AnnotatedPattern, get_session
 
 def convert_string_input_to_smiles(input_string):
     """Parse an input request string."""
