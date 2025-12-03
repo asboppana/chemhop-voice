@@ -18,6 +18,7 @@ from src.config.settings import get_settings
 from src.api.routers import api_router
 from src.middleware.request_logging import RequestLoggingMiddleware
 from src.middleware.error_handling import ErrorHandlingMiddleware
+from src.services.elevenlabs import create_elevenlabs_agent
 
 
 @asynccontextmanager
@@ -33,11 +34,17 @@ async def lifespan(app: FastAPI):
     else:
         logging.info(f"Supabase configured for environment: {settings.environment}")
     
+    # Initialize voice agent service
+    try:
+        app.state.voice_agent_id = create_elevenlabs_agent("drugdiscoveryagent")
+    except Exception as e:
+        logging.error(f"Failed to create voice agent: {e}")
+    
     # Initialize background jobs
     yield
     
     # Shutdown
-    logging.info("Shutting down US Hacks API V1")
+    logging.info("Shutting down...")
 
 
 def create_app() -> FastAPI:
