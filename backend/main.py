@@ -19,6 +19,7 @@ from src.api.routers import api_router
 from src.middleware.request_logging import RequestLoggingMiddleware
 from src.middleware.error_handling import ErrorHandlingMiddleware
 from src.services.elevenlabs import create_elevenlabs_agent
+from src.services.mcp.mcp_server import mcp_server
 
 
 @asynccontextmanager
@@ -80,6 +81,9 @@ def create_app() -> FastAPI:
     
     # Include API router
     app.include_router(api_router, prefix="/api/v1")
+
+    # Mount the MCP server
+    app.mount("/mcp", mcp_server.sse_app())
     
     return app
 
