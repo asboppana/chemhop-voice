@@ -6,9 +6,15 @@ import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
 from pathlib import Path
+import sys
 
-# Import the database models using relative imports
-from ..models import AnnotatedPattern, get_session
+# Add the smart_chemist directory to sys.path to allow imports
+smart_chemist_dir = Path(__file__).resolve().parent.parent
+if str(smart_chemist_dir) not in sys.path:
+    sys.path.insert(0, str(smart_chemist_dir))
+
+# Import the database models
+from models import AnnotatedPattern, get_session
 
 def convert_string_input_to_smiles(input_string):
     """Parse an input request string."""

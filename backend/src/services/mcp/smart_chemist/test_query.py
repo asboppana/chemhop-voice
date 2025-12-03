@@ -1,6 +1,14 @@
 """Test script to verify SQLAlchemy queries work correctly."""
 
-from .models import AnnotatedPattern, get_session
+import sys
+from pathlib import Path
+
+# Add the smart_chemist directory to sys.path to allow imports
+smart_chemist_dir = Path(__file__).resolve().parent
+if str(smart_chemist_dir) not in sys.path:
+    sys.path.insert(0, str(smart_chemist_dir))
+
+from models import AnnotatedPattern, get_session
 from rdkit import Chem
 
 def test_database_query():
@@ -29,7 +37,7 @@ def test_database_query():
         # Test 4: Test SmartChemist class
         print("\n✓ Testing SmartChemist class...")
         
-        from .tools.smart_chemist import SmartChemist
+        from tools.smart_chemist import SmartChemist
         import json
         
         chemist = SmartChemist()
