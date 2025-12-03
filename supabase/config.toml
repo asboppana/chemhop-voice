@@ -10,9 +10,9 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public", "comms", "nutrition", "tensor", "terra", "legal", "ref"]
+schemas = ["public", "graphql_public"]
 # Extra schemas to add to the search_path of every request.
-extra_search_path = ["public", "extensions", "comms", "nutrition", "tensor", "terra", "legal", "ref"]
+extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
 max_rows = 1000
@@ -56,18 +56,8 @@ enabled = true
 schema_paths = [
   "./schemas/00_extensions.sql",
   "./schemas/00_schemas.sql",
-  "./schemas/01_enums.sql",
-  "./schemas/02_functions.sql",
+  "./schemas/01_functions.sql",
   "./schemas/10_public/*.sql",
-  "./schemas/20_comms/*.sql",
-  "./schemas/30_nutrition/*.sql",
-  "./schemas/40_tensor/*.sql",
-  "./schemas/50_terra/*.sql",
-  "./schemas/60_legal/*.sql",
-  "./schemas/70_ref/*.sql", 
-  "./schemas/80_fns/*.sql",
-  "./schemas/90_extra/*.sql",
-  "./schemas/99_cross_schema_foreign_keys.sql"  # Importantly, this is last
 ]
 
 [db.seed]

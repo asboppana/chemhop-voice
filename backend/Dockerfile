@@ -2,9 +2,12 @@ FROM public.ecr.aws/docker/library/python:3.10-bookworm
 
 WORKDIR /app
 
-# Ensure a writable temp directory exists for pip and Python's tempfile
+# Ensure a writable temp directory exists for uv and Python's tempfile
 ENV TMPDIR=/tmp
 RUN mkdir -p /tmp /var/tmp /usr/tmp && chmod 1777 /tmp /var/tmp /usr/tmp
+
+# Install uv for fast Python package management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Configure apt
 RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99custom && \
@@ -70,8 +73,17 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Set PYTHONPATH to include the parent directory of new_src
 ENV PYTHONPATH="/app"
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Enable bytecode compilation for faster startup
+ENV UV_COMPILE_BYTECODE=1
+
+# Copy pyproject.toml and uv.lock for dependency installation
+COPY pyproject.toml uv.lock* ./
+
+# Install dependencies using uv (much faster than pip)
+# --frozen ensures reproducible builds from uv.lock
+# --no-install-project only installs dependencies, not the project itself
+# --no-dev skips dev dependencies
+RUN uv sync --frozen --no-install-project --no-dev
 
 # Copy the source code
 COPY . /app/src
@@ -80,7 +92,8 @@ WORKDIR /app/src
 
 EXPOSE 8000
 
-CMD exec gunicorn main:app \
+# Use uv run to execute gunicorn in the uv-managed environment
+CMD uv run gunicorn main:app \
     --bind :8000 \
     --workers 2 \
     --timeout 300 \

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { supabase } from './lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { env } from './env';
 
 const BASE_URL = env.VITE_API_BASE_URL;
