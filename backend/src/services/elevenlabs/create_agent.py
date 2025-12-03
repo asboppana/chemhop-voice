@@ -11,22 +11,17 @@ In the model's system prompt it is informed of:
 - It must continue the conversation even when commands are running or queued
 """
 
-from dotenv import load_dotenv
+import logging
 from elevenlabs.client import ElevenLabs
-import os, logging
+from src.config.settings import get_settings
 from src.services.elevenlabs.knowledge_base import get_knowledge_base
 from src.services.prompts import VOICE_AGENT_SYSTEM_PROMPT, VOICE_AGENT_FIRST_MESSAGE
 
 
 def create_elevenlabs_agent(name: str) -> str:
-
-    load_dotenv()
-
-    elevenlabs_client = ElevenLabs(
-        api_key=os.getenv("ELEVENLABS_API_KEY"),
-    )
+    settings = get_settings()
     knowledge_base = get_knowledge_base()
-
+    elevenlabs_client = ElevenLabs(api_key=settings.elevenlabs_api_key)
     response = elevenlabs_client.conversational_ai.agents.create(
         name=name,
         conversation_config={
