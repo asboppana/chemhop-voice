@@ -174,12 +174,17 @@ export const authAPI = {
   }) => server.post('/signup', user_data),  // ← Updated
 }
 
-const llmChat = {  
+const llmAPI = {  
   stream: (data: { messages: { role: 'user' | 'assistant', content: string }[], model: string }) => server.post('/chat/general', data).then(res => res.data),
+};
+
+const voiceAPI = {
+  getVoiceAgentId: () => server.get('/voice-agent').then(res => res.data),
 };
 
 export default {
   ...server,
   authAPI,
-  llmChat,
+  llmAPI,
+  voiceAPI,
 };

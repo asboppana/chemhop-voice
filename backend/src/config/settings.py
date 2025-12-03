@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     # OpenAI settings
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
+    elevenlabs_api_key: str = Field(default="", env="ELEVENLABS_API_KEY")
 
     @property
     def is_production(self) -> bool:
