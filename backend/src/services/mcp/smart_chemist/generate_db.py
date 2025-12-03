@@ -1,16 +1,16 @@
+import sys
 from pathlib import Path
+
 import pandas as pd
 from rdkit import Chem
 from tqdm import tqdm
-import sys
 
 # Add the smart_chemist directory to sys.path to allow imports
 smart_chemist_dir = Path(__file__).resolve().parent
 if str(smart_chemist_dir) not in sys.path:
     sys.path.insert(0, str(smart_chemist_dir))
 
-# Import models and database setup
-from models import AnnotatedPattern, Base, engine, get_session
+from models import AnnotatedPattern, Base, engine, get_session  # noqa: E402
 
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent

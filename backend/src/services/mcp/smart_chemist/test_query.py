@@ -3,13 +3,14 @@
 import sys
 from pathlib import Path
 
+from rdkit import Chem
+
 # Add the smart_chemist directory to sys.path to allow imports
 smart_chemist_dir = Path(__file__).resolve().parent
 if str(smart_chemist_dir) not in sys.path:
     sys.path.insert(0, str(smart_chemist_dir))
 
-from models import AnnotatedPattern, get_session
-from rdkit import Chem
+from models import AnnotatedPattern, get_session  # noqa: E402
 
 def test_database_query():
     """Test basic database queries."""
@@ -37,8 +38,8 @@ def test_database_query():
         # Test 4: Test SmartChemist class
         print("\n✓ Testing SmartChemist class...")
         
-        from tools.smart_chemist import SmartChemist
         import json
+        from tools.smart_chemist import SmartChemist  # noqa: E402
         
         chemist = SmartChemist()
         

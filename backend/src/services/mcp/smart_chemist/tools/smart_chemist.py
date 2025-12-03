@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+
 import rdkit
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -5,16 +8,13 @@ from rdkit.Chem.Draw import rdMolDraw2D
 import requests
 import xml.etree.ElementTree as ET
 import pandas as pd
-from pathlib import Path
-import sys
 
-# Add the smart_chemist directory to sys.path to allow imports
+# Add the smart_chemist directory to sys.path for local imports
 smart_chemist_dir = Path(__file__).resolve().parent.parent
 if str(smart_chemist_dir) not in sys.path:
     sys.path.insert(0, str(smart_chemist_dir))
 
-# Import the database models
-from models import AnnotatedPattern, get_session
+from models import AnnotatedPattern, get_session  # noqa: E402
 
 def convert_string_input_to_smiles(input_string):
     """Parse an input request string."""
