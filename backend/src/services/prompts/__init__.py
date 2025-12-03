@@ -1,9 +1,13 @@
-from .chat_prompt import (
-    CHAT_SYSTEM_PROMPT,
+from .chat_prompts import (
     CHAT_END_PROMPT,
+)
+from .voice_agent_prompts import (
+    VOICE_AGENT_SYSTEM_PROMPT,
+    VOICE_AGENT_FIRST_MESSAGE,
 )
 
 __all__ = [
-    "CHAT_SYSTEM_PROMPT",
-    "CHAT_END_PROMPT"
+    "CHAT_END_PROMPT",
+    "VOICE_AGENT_SYSTEM_PROMPT",
+    "VOICE_AGENT_FIRST_MESSAGE",
 ]
