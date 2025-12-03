@@ -1,0 +1,92 @@
+# Development and Testing Dependencies
+# Install with: pip install -r requirements.txt -r requirements.dev.txt
+
+# Include base requirements
+-r requirements.txt
+
+# ============================================================================
+# Testing Framework
+# ============================================================================
+
+# Core testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0              # Coverage reporting
+pytest-env>=1.1.0              # Environment variable management
+pytest-mock>=3.12.0            # Mocking utilities
+pytest-xdist>=3.5.0            # Parallel test execution
+pytest-timeout>=2.2.0          # Test timeouts
+
+# Test data generation
+factory-boy>=3.3.0             # Factory pattern for test data
+faker>=20.0.0                  # Fake data generation
+
+# Integration testing
+testcontainers>=3.7.0          # Docker containers for testing
+httpx>=0.25.0                  # Already in main, but needed for test client
+
+# ============================================================================
+# Code Quality & Linting
+# ============================================================================
+
+# Formatters
+black>=23.0.0                  # Code formatter
+isort>=5.12.0                  # Import sorting
+
+# Linters
+flake8>=6.0.0                  # Style guide enforcement
+flake8-docstrings>=1.7.0       # Docstring linting
+flake8-bugbear>=23.0.0         # Additional checks
+mypy>=1.7.0                    # Static type checking
+pylint>=3.0.0                  # Comprehensive linting
+
+# Type stubs
+types-redis>=4.6.0             # Redis type stubs
+types-aiofiles>=23.0.0         # Aiofiles type stubs
+
+# ============================================================================
+# Development Tools
+# ============================================================================
+
+# Debugging
+ipdb>=0.13.13                  # Enhanced debugger
+ipython>=8.12.0                # Interactive shell
+
+# Documentation
+mkdocs>=1.5.0                  # Documentation generator
+mkdocs-material>=9.4.0         # Material theme
+mkdocstrings[python]>=0.24.0   # Auto-generate from docstrings
+
+# API testing
+httpie>=3.2.0                  # User-friendly HTTP client
+requests-mock>=1.11.0          # Mock HTTP requests
+
+# Performance profiling
+py-spy>=0.3.14                 # Sampling profiler
+memory-profiler>=0.61.0        # Memory profiling
+
+# ============================================================================
+# Security & Compliance
+# ============================================================================
+
+# Security scanning
+bandit>=1.7.5                  # Security issue scanner
+safety>=2.3.0                  # Dependency vulnerability checker
+
+# ============================================================================
+# Pre-commit & Git Hooks
+# ============================================================================
+
+pre-commit>=3.5.0              # Git hooks framework
+
+# ============================================================================
+# Local Development Utilities
+# ============================================================================
+
+# Hot reload and debugging
+watchdog>=3.0.0                # File system monitoring
+python-dotenv>=1.0.0           # Already in main, but useful for dev
+
+# API documentation
+fastapi[all]>=0.104.0          # Includes extra dev tools
+
