@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { env } from '@/env';
+import { env } from '@/app/env';
 
 // These must be defined in your Vite env (e.g., .env.local)
 const supabaseUrl = env.VITE_SUPABASE_URL;
