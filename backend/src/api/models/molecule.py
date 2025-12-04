@@ -136,3 +136,79 @@ class ClusterInfoResponse(BaseModel):
     cluster_id: int = Field(..., description="ID of the cluster")
     num_members: int = Field(..., description="Number of rings in this cluster")
     member_smiles: List[str] = Field(..., description="All SMILES in the cluster")
+
+
+class ExtractSubstructureRequest(BaseModel):
+    """Request model for extracting substructure SMILES."""
+    smiles: str = Field(
+        ...,
+        description="SMILES string representation of the parent molecule",
+        min_length=1
+    )
+    atom_indices: List[int] = Field(
+        ...,
+        description="List of atom indices that define the substructure"
+    )
+
+
+class ExtractSubstructureResponse(BaseModel):
+    """Response model for extracted substructure."""
+    substructure_smiles: str = Field(..., description="SMILES string of the extracted substructure")
+    parent_smiles: str = Field(..., description="Original parent molecule SMILES")
+
+
+class GenerateSvgRequest(BaseModel):
+    """Request model for generating molecule SVG."""
+    smiles: str = Field(
+        ...,
+        description="SMILES string representation of the molecule",
+        min_length=1
+    )
+    width: int = Field(
+        200,
+        description="Width of the SVG in pixels",
+        ge=50,
+        le=1000
+    )
+    height: int = Field(
+        200,
+        description="Height of the SVG in pixels",
+        ge=50,
+        le=1000
+    )
+
+
+class GenerateSvgResponse(BaseModel):
+    """Response model for generated SVG."""
+    svg: str = Field(..., description="SVG representation of the molecule")
+    smiles: str = Field(..., description="Original SMILES string")
+
+
+class ReplaceSubstructureRequest(BaseModel):
+    """Request model for replacing a substructure with a bio-isostere."""
+    parent_smiles: str = Field(
+        ...,
+        description="SMILES string of the parent molecule",
+        min_length=1
+    )
+    source_pattern_smiles: str = Field(
+        ...,
+        description="SMILES string of the pattern to replace",
+        min_length=1
+    )
+    replacement_smiles: str = Field(
+        ...,
+        description="SMILES string of the replacement pattern",
+        min_length=1
+    )
+    atom_indices: List[int] = Field(
+        ...,
+        description="Atom indices of the source pattern in the parent molecule"
+    )
+
+
+class ReplaceSubstructureResponse(BaseModel):
+    """Response model for substructure replacement."""
+    original_smiles: str = Field(..., description="Original parent molecule SMILES")
+    replacement_smiles_list: List[str] = Field(..., description="List of generated molecule SMILES (up to 3)")
+    num_generated: int = Field(..., description="Number of successfully generated molecules")

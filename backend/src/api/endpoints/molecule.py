@@ -14,7 +14,13 @@ from src.api.models.molecule import (
     HighlightResponse,
     BioisostereScanRequest,
     BioisostereScanResponse,
-    ClusterInfoResponse
+    ClusterInfoResponse,
+    ExtractSubstructureRequest,
+    ExtractSubstructureResponse,
+    GenerateSvgRequest,
+    GenerateSvgResponse,
+    ReplaceSubstructureRequest,
+    ReplaceSubstructureResponse
 )
 from src.controllers.molecule_controller import MoleculeController
 from src.controllers.bioisostere_controller import BioisostereController
@@ -225,4 +231,160 @@ async def get_cluster_info(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving cluster info: {str(e)}"
+        )
+
+
+@router.post(
+    "/molecule/extract-substructure",
+    status_code=status.HTTP_200_OK,
+    response_model=ExtractSubstructureResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        422: {"model": ErrorResponse, "description": "Invalid SMILES or atom indices"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def extract_substructure(
+    request: ExtractSubstructureRequest,
+    controller: MoleculeController = Depends(get_molecule_controller),
+) -> ExtractSubstructureResponse:
+    """
+    Extract a substructure SMILES from a parent molecule.
+    
+    Takes a parent molecule SMILES and a list of atom indices, then extracts
+    the substructure defined by those atoms as a separate SMILES string.
+    
+    Parameters:
+    - **smiles**: SMILES string of the parent molecule
+    - **atom_indices**: List of atom indices that define the substructure
+    
+    Returns:
+    - Substructure SMILES
+    - Parent SMILES
+    """
+    try:
+        substructure_smiles = controller.extract_substructure_smiles(
+            request.smiles,
+            request.atom_indices
+        )
+        return ExtractSubstructureResponse(
+            substructure_smiles=substructure_smiles,
+            parent_smiles=request.smiles
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error extracting substructure: {str(e)}"
+        )
+
+
+@router.post(
+    "/molecule/generate-svg",
+    status_code=status.HTTP_200_OK,
+    response_model=GenerateSvgResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        422: {"model": ErrorResponse, "description": "Invalid SMILES string"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def generate_svg(
+    request: GenerateSvgRequest,
+    controller: MoleculeController = Depends(get_molecule_controller),
+) -> GenerateSvgResponse:
+    """
+    Generate an SVG visualization from a SMILES string.
+    
+    Takes a SMILES string and generates an SVG representation of the molecule.
+    
+    Parameters:
+    - **smiles**: SMILES string of the molecule
+    - **width**: Width of the SVG in pixels (default: 200)
+    - **height**: Height of the SVG in pixels (default: 200)
+    
+    Returns:
+    - SVG string
+    - Original SMILES
+    """
+    try:
+        svg = controller.generate_molecule_svg(
+            request.smiles,
+            request.width,
+            request.height
+        )
+        return GenerateSvgResponse(
+            svg=svg,
+            smiles=request.smiles
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating SVG: {str(e)}"
+        )
+
+
+@router.post(
+    "/molecule/replace-substructure",
+    status_code=status.HTTP_200_OK,
+    response_model=ReplaceSubstructureResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        422: {"model": ErrorResponse, "description": "Invalid SMILES or replacement failed"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def replace_substructure(
+    request: ReplaceSubstructureRequest,
+    controller: MoleculeController = Depends(get_molecule_controller),
+) -> ReplaceSubstructureResponse:
+    """
+    Replace a substructure in a molecule with a bio-isostere replacement.
+    
+    Attempts to optimally align the replacement pattern with the source pattern,
+    trying 3 different rotations (0°, 120°, 240°) to minimize distance between
+    connection points on the perimeter.
+    
+    Parameters:
+    - **parent_smiles**: SMILES of the parent molecule
+    - **source_pattern_smiles**: SMILES of the pattern to replace
+    - **replacement_smiles**: SMILES of the replacement pattern
+    - **atom_indices**: Atom indices of the source pattern in the parent molecule
+    
+    Returns:
+    - Original parent SMILES
+    - List of generated molecule SMILES (up to 3)
+    - Number of successfully generated molecules
+    """
+    try:
+        replacement_smiles_list = controller.replace_substructure_with_alignment(
+            request.parent_smiles,
+            request.source_pattern_smiles,
+            request.replacement_smiles,
+            request.atom_indices
+        )
+        
+        return ReplaceSubstructureResponse(
+            original_smiles=request.parent_smiles,
+            replacement_smiles_list=replacement_smiles_list,
+            num_generated=len(replacement_smiles_list)
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error replacing substructure: {str(e)}"
         )
