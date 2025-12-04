@@ -7,8 +7,17 @@ const indexToLetter = (index: number): string => {
   return String.fromCharCode(65 + index);
 };
 
+// Example molecules for quick access
+const EXAMPLE_MOLECULES = [
+  { name: 'Sildenafil', description: 'PDE5 inhibitor (Viagra)', smiles: 'CCCC1=NN(C2=C1N=C(NC2=O)C3=C(C=CC(=C3)S(=O)(=O)N4CCN(CC4)C)OCC)C' },
+  { name: 'Ribociclib', description: 'CDK4/6 inhibitor', smiles: 'CN1CCN(CC1)c2nc(Nc3ccc(cc3)N4CCNCC4)nc(n2)C5CCCCC5' },
+  { name: 'Lapatinib', description: 'Dual kinase inhibitor', smiles: 'CS(=O)(=O)CCNCc1ccc(cc1Cl)c2ccc3ncnc(Oc4ccc(F)c(Cl)c4)c3c2' },
+  { name: 'Sunitinib', description: 'Multi-kinase inhibitor', smiles: 'CCN(CC)CCNC(=O)c1c(C)[nH]c(c1C)c2c[nH]c(=O)c(c2)c3cc(F)ccc3' },
+  { name: 'Osimertinib', description: 'EGFR inhibitor', smiles: 'COc1cc(N(C)CCN(C)C)c(NC(=O)C=C)cc1Nc2nccc(n2)c3cn(C4CC4)c4ccccc34' },
+  { name: 'Erlotinib', description: 'EGFR inhibitor', smiles: 'COCCOc1cc2c(Nc3cccc(c3)C#C)ncnc2cc1OCCOC' },
+];
+
 export const ChemistryMainPage: React.FC = () => {
-  const [smilesInput, setSmilesInput] = useState('');
   const [analyzedSmiles, setAnalyzedSmiles] = useState(''); // Store the original SMILES used for analysis
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,10 +74,8 @@ export const ChemistryMainPage: React.FC = () => {
     generateBioisostereSvgs();
   }, [bioisostereResults]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!smilesInput.trim()) {
+  const handleAnalyzeMolecule = async (smiles: string) => {
+    if (!smiles.trim()) {
       setError('Please enter a SMILES string');
       return;
     }
@@ -77,13 +84,14 @@ export const ChemistryMainPage: React.FC = () => {
     setError(null);
     
     try {
-      const response = await analyzeMolecule(smilesInput);
+      const response = await analyzeMolecule(smiles);
       setResult(response);
-      setAnalyzedSmiles(smilesInput); // Store the original SMILES for highlighting
+      setAnalyzedSmiles(smiles); // Store the original SMILES for highlighting
       setDisplayedSvg(response.svg);
       // Reset selection state
       setSelectedPatterns(new Set());
       setExpressionGroups([]);
+      setBioisostereResults(new Map());
       console.log('Molecule analysis result:', response);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to analyze molecule');
@@ -223,69 +231,11 @@ export const ChemistryMainPage: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-full bg-white text-black flex">
-      {/* Left side - SMILES Input */}
-      <div className="w-80 border-r border-gray-300 flex flex-col overflow-hidden">
-        <div className="flex-shrink-0 p-6 pb-0">
-          <h1 className="text-xl font-light mb-6 tracking-wide">SMILES INPUT</h1>
-          
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="smiles" className="text-xs uppercase tracking-wider text-gray-600">
-                Enter SMILES String
-              </label>
-              <input
-                id="smiles"
-                type="text"
-                value={smilesInput}
-                onChange={(e) => setSmilesInput(e.target.value)}
-                placeholder="CCO"
-                className="bg-transparent border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors font-mono"
-              />
-            </div>
-            
-            <button
-              type="submit"
-              className="bg-black text-white px-4 py-2 text-sm font-medium hover:bg-gray-800 transition-colors"
-            >
-              SUBMIT
-            </button>
-          </form>
-        </div>
-
-        {/* Example SMILES */}
-        <div className="flex-1 min-h-0 mt-8 px-6 pb-6">
-          <div className="border-t border-gray-300 pt-6">
-            <p className="text-xs uppercase tracking-wider text-gray-600 mb-3">Examples</p>
-            <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 400px)' }}>
-              {[
-                { name: 'Sildenafil (Viagra)', smiles: 'CCCC1=NN(C2=C1N=C(NC2=O)C3=C(C=CC(=C3)S(=O)(=O)N4CCN(CC4)C)OCC)C' },
-                { name: 'Ribociclib', smiles: 'CN1CCN(CC1)c2nc(Nc3ccc(cc3)N4CCNCC4)nc(n2)C5CCCCC5' },
-                { name: 'Lapatinib', smiles: 'CS(=O)(=O)CCNCc1ccc(cc1Cl)c2ccc3ncnc(Oc4ccc(F)c(Cl)c4)c3c2' },
-                { name: 'Sunitinib', smiles: 'CCN(CC)CCNC(=O)c1c(C)[nH]c(c1C)c2c[nH]c(=O)c(c2)c3cc(F)ccc3' },
-                { name: 'Osimertinib', smiles: 'COc1cc(N(C)CCN(C)C)c(NC(=O)C=C)cc1Nc2nccc(n2)c3cn(C4CC4)c4ccccc34' },
-                { name: 'Erlotinib', smiles: 'COCCOc1cc2c(Nc3cccc(c3)C#C)ncnc2cc1OCCOC' },
-                { name: 'Palbociclib', smiles: 'CC(C)n1cc(cn1)c2cnc(nc2N3CCNCC3)Nc4ccc(cn4)C(=O)NC5CCCCC5' },
-                { name: 'Venetoclax', smiles: 'CC1(C)CCC(C)(C)c2c1ccc(c2)c3cc(c(N4CCN(CC4)CCO)c(c3)c5ccc(cc5)c6cccnc6)C(=O)NS(=O)(=O)c7ccc(cc7)NCC8(CC8)C(F)(F)F' },
-              ].map((example) => (
-                <button
-                  key={example.smiles}
-                  onClick={() => setSmilesInput(example.smiles)}
-                  className="text-left p-2 hover:bg-gray-100 transition-colors rounded text-xs flex-shrink-0"
-                >
-                  <div className="font-medium">{example.name}</div>
-                  <div className="text-gray-600 font-mono text-[10px] mt-1">{example.smiles}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right side - Main content area */}
-      <div className="flex-1 p-12 overflow-auto">
+    <div className="w-full bg-white text-black">
+      {/* Main content area */}
+      <div className="min-h-full">
         {loading && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center min-h-[60vh] py-20">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
               <p className="text-sm text-gray-600">Analyzing molecule...</p>
@@ -294,7 +244,7 @@ export const ChemistryMainPage: React.FC = () => {
         )}
 
         {error && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center min-h-[60vh] py-20">
             <div className="text-center max-w-md">
               <p className="text-sm text-red-600 mb-2">Error</p>
               <p className="text-xs text-gray-600">{error}</p>
@@ -303,27 +253,56 @@ export const ChemistryMainPage: React.FC = () => {
         )}
 
         {!loading && !error && !result && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="text-sm text-gray-600 uppercase tracking-widest">
-                Molecule Viewer
-              </p>
-              <p className="text-xs text-gray-1500 mt-2">
-                Enter a SMILES string to begin
+          <div className="flex flex-col items-center justify-start w-full pt-16 pb-8">
+            {/* Welcome header */}
+            <div className="text-center mb-10">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-xl bg-gray-100 flex items-center justify-center border border-gray-200">
+                <img src="/icons/Beaker.svg" alt="Beaker" className="w-8 h-8" />
+              </div>
+              <h1 className="text-2xl font-medium text-black mb-3">
+                ChemHop-Voice
+              </h1>
+              <p className="text-base text-gray-1000">
+                Analyze molecular structures and discover bioisostere replacements
               </p>
             </div>
+
+            {/* Example molecules grid */}
+            <div className="w-full max-w-lg px-4">
+              <p className="text-xs uppercase tracking-widest text-gray-600 mb-4 text-center font-medium">
+                Try an example
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {EXAMPLE_MOLECULES.map((example) => (
+                  <button
+                    key={example.smiles}
+                    onClick={() => handleAnalyzeMolecule(example.smiles)}
+                    className="group text-left px-4 py-3.5 rounded-lg border border-gray-200 hover:border-gray-300 hover:scale-[0.98] hover:shadow-md transition-all duration-300"
+                  >
+                    <p className="text-sm font-semibold text-gray-900 group-hover:text-black">
+                      {example.name}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {example.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>            
           </div>
         )}
 
         {!loading && !error && result && (
-          <div className="space-y-6">
+          <div className="space-y-6 p-12 pb-32">
             {/* Source Molecule and Patterns Side by Side */}
             <div className="flex flex-col lg:flex-row gap-6 items-start">
               {/* SVG Visualization - Larger box on left */}
               <div className="flex-shrink-0 w-full lg:w-auto">
-                <h3 className="text-sm font-light mb-3 uppercase tracking-wider text-black">
-                  Source Molecule
-                </h3>
+                <div className="flex items-center h-8 mb-3">
+                  <h3 className="text-sm font-medium uppercase tracking-wider text-black">
+                    Source Molecule
+                  </h3>
+                </div>
                 <div className="border border-gray-300 rounded-lg p-4 bg-white w-full max-w-md mx-auto lg:mx-0 aspect-square lg:w-96 relative">
                   {highlightLoading && (
                     <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-10">
@@ -381,14 +360,14 @@ export const ChemistryMainPage: React.FC = () => {
                 return filteredMatches.length > 0 ? (
                   <div className="flex-1 min-w-0">
                     {/* Header with + button */}
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-light uppercase tracking-wider text-black">
-                        Patterns <span className="text-gray-600">({filteredMatches.length})</span>
+                    <div className="flex items-center justify-between h-8 mb-3">
+                      <h3 className="text-sm font-medium uppercase tracking-wider text-black">
+                        Patterns <span className="text-gray-1500">({filteredMatches.length})</span>
                       </h3>
                       <div className="flex items-center gap-2.5">
                         {/* Variant count input */}
-                        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2.5 py-1.5">
-                          <label htmlFor="variant-count" className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">
+                        <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+                          <label htmlFor="variant-count" className="text-xs uppercase tracking-wider text-gray-1500 font-medium">
                             Variants
                           </label>
                           <input
@@ -398,7 +377,7 @@ export const ChemistryMainPage: React.FC = () => {
                             max="100"
                             value={variantCount}
                             onChange={(e) => setVariantCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                            className="w-12 bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] font-mono text-center focus:outline-none focus:border-black transition-colors"
+                            className="w-10 bg-transparent text-sm font-medium text-black text-center focus:outline-none"
                           />
                         </div>
                         
@@ -408,7 +387,7 @@ export const ChemistryMainPage: React.FC = () => {
                           className={`w-7 h-7 rounded-full font-semibold text-base transition-all flex items-center justify-center ${
                             selectedPatterns.size > 0
                               ? 'bg-black text-white hover:bg-gray-800'
-                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                              : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                           }`}
                           title="Add pattern to queries"
                         >
@@ -417,7 +396,7 @@ export const ChemistryMainPage: React.FC = () => {
                         {expressionGroups.length > 0 && (
                           <button
                             onClick={handleClearExpression}
-                            className="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 text-sm text-gray-600 flex items-center justify-center transition-colors"
+                            className="w-7 h-7 rounded-full bg-black hover:bg-gray-800 text-sm text-white flex items-center justify-center transition-colors"
                             title="Clear queries"
                           >
                             ✕
@@ -427,7 +406,7 @@ export const ChemistryMainPage: React.FC = () => {
                     </div>
                     
                     {/* Pattern grid */}
-                    <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                    <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
                       {filteredMatches.map((match, index) => (
                         <button 
                           key={index}
@@ -442,7 +421,7 @@ export const ChemistryMainPage: React.FC = () => {
                           <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black text-white text-[10px] font-medium flex items-center justify-center">
                             {indexToLetter(index)}
                           </div>
-                          <p className="text-[10px] font-medium mb-1 pl-6 leading-tight line-clamp-2 min-h-[24px]">{match.trivial_name.name}</p>
+                          <p className="text-xs font-medium mb-1 pl-6 leading-tight line-clamp-2 min-h-[28px]">{match.trivial_name.name}</p>
                           <div className="flex-1 min-h-0 flex items-center justify-center p-1">
                             {match.svg ? (
                               <div 
@@ -463,7 +442,7 @@ export const ChemistryMainPage: React.FC = () => {
               })()}
             </div>
 
-            {/* Bio-isostere Results */}
+            {/* Bioisostere Results */}
             {bioisostereResults.size > 0 && result && (() => {
               const filteredMatches = result.matches.filter(match => 
                 match.trivial_name.group.toLowerCase().includes('cyclic') ||
@@ -474,7 +453,7 @@ export const ChemistryMainPage: React.FC = () => {
               return (
                 <div className="mt-12">
                   <h2 className="text-lg font-light mb-6 uppercase tracking-wider text-black">
-                    Bio-isostere Results
+                    Bioisostere Results
                   </h2>
                   
                   <div className="space-y-8">

@@ -17,7 +17,9 @@ const DRAWER_CONFIG = {
 // Visual spacing constants (in px)
 const GUTTER_PX = 4; // Left/right outer margin for the drawer
 const GAP_PX = 4; // Visible gap between drawer and chat (4px from each side)
-const CHAT_WIDTH_PERCENT = 0.2; // Keep existing behavior (w-1/5)
+const CHAT_WIDTH_PERCENT = 0.2; // Default chat width (w-1/5)
+const CHAT_MIN_WIDTH_PX = 280; // Minimum chat panel width
+const CHAT_MAX_WIDTH_PX = 600; // Maximum chat panel width
 const ANIM_MS = 350; // Shared animation duration for drawer+chat
 
 interface BottomDrawerProps {
@@ -39,6 +41,10 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({ routeKey, disablePul
   const [windowHeight, setWindowHeight] = useState(window.innerHeight);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [isDragging, setIsDragging] = useState(false);
+  const [chatWidth, setChatWidth] = useState(() => Math.round(window.innerWidth * CHAT_WIDTH_PERCENT));
+  const [isResizingChat, setIsResizingChat] = useState(false);
+  const chatResizeStartX = useRef<number>(0);
+  const chatResizeStartWidth = useRef<number>(0);
   const dragStartY = useRef<number>(0);
   const dragStartState = useRef<DrawerState>('half');
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -252,8 +258,8 @@ export const BottomDrawer: React.FC<BottomDrawerProps> = ({ routeKey, disablePul
   // Whether inline chat is actively visible on desktop
   const chatOpen = shouldShowInlineChat && isDesktop;
 
-  // Pixel width of chat (kept proportional to viewport width)
-  const chatWidthPx = chatOpen ? Math.round(windowWidth * CHAT_WIDTH_PERCENT) : 0;
+  // Pixel width of chat (user-resizable with min/max constraints)
+  const chatWidthPx = chatOpen ? chatWidth : 0;
   
   useEffect(() => {
     // Allow chatting with the drawer in half state; only bump from collapsed -> half
@@ -398,6 +404,45 @@ const handleDrawerBarClick = async (e: React.MouseEvent) => {
   const handleDragEnd = () => {
     setIsDragging(false);
   };
+
+  // Chat resize handlers
+  const handleChatResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizingChat(true);
+    chatResizeStartX.current = e.clientX;
+    chatResizeStartWidth.current = chatWidth;
+    document.body.style.cursor = 'ew-resize';
+  };
+
+  // Add mouse move and up listeners when resizing chat
+  useEffect(() => {
+    if (isResizingChat) {
+      const handleMove = (e: MouseEvent) => {
+        // Dragging left increases width, dragging right decreases width
+        const deltaX = chatResizeStartX.current - e.clientX;
+        const newWidth = Math.max(
+          CHAT_MIN_WIDTH_PX,
+          Math.min(CHAT_MAX_WIDTH_PX, chatResizeStartWidth.current + deltaX)
+        );
+        setChatWidth(newWidth);
+      };
+
+      const handleEnd = () => {
+        setIsResizingChat(false);
+        document.body.style.cursor = '';
+      };
+
+      document.addEventListener('mousemove', handleMove);
+      document.addEventListener('mouseup', handleEnd);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMove);
+        document.removeEventListener('mouseup', handleEnd);
+        document.body.style.cursor = '';
+      };
+    }
+  }, [isResizingChat]);
 
   // Add mouse move and up listeners when dragging
   useEffect(() => {
@@ -615,8 +660,24 @@ const handleDrawerBarClick = async (e: React.MouseEvent) => {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: isDragging ? 0 : ANIM_MS / 1000, ease: 'linear' }}
-            style={{ width: chatWidthPx, height: chatHeight }}
+            style={{ 
+              width: chatWidthPx, 
+              height: chatHeight,
+              userSelect: isResizingChat ? 'none' : 'auto'
+            }}
           >
+            {/* Resize handle on the left edge */}
+            <div
+              className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-50 group`}
+              onMouseDown={handleChatResizeStart}
+            >
+              {/* Visual indicator - subtle line that appears on hover */}
+              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 rounded-full transition-all ${
+                isResizingChat 
+                  ? 'bg-white/40' 
+                  : 'bg-white/0 group-hover:bg-white/20'
+              }`} />
+            </div>
             <ChatPanel isInlineMode={true} parentControlsInlineAnimation={true} />
           </motion.div>
         )}
