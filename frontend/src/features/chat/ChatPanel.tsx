@@ -1,11 +1,7 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { XClose } from '@/components/ui/XClose';
 import { AnimatePresence, motion } from 'framer-motion';
-
-import RotatingSedonaLogo from '@/components/animations/RotatingSedonaLogo';
 import { useChatContext, type Message } from '@/contexts/ChatContext';
-
 
 // Configuration for chat panel positioning and behavior
 const CHAT_CONFIG = {
@@ -48,16 +44,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   });
   
   const {
-    state: { messages, streamingMessage, streamingChunks, isLoading, mode, voiceActive, voiceConnectionStatus, voiceAgentStatus },
+    state: { messages, mode, voiceActive, isLoading },
     shouldShowInlineChat,
     shouldShowFloatingChat,
     isMobile,
     closeChat,
     toggleMode,
-    addMessage,
     toggleVoice,
-    sendTextToVoice,
-    startVoice
+    sendMessage
   } = useChatContext();
 
   // Don't render if this mode isn't active
@@ -107,68 +101,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const sendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
-
-    // Auto-start voice if not active
-    if (!voiceActive) {
-      console.log('Voice not active, starting voice connection...');
-      await startVoice();
-      // Give it a moment to connect before sending
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    // Always use ElevenLabs agent for all messages
-    // sendTextToVoice will handle adding the user message to chat
-    const sent = sendTextToVoice(content.trim());
-    
-    if (sent) {
-      setInputValue('');
-      // ElevenLabs will handle the response through voice callbacks
-    } else {
-      console.error('Failed to send text to voice agent');
-      // Add error message
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        type: 'assistant',
-        content: 'Sorry, I encountered an error connecting to the voice agent. Please try again.',
-        timestamp: new Date(),
-        isFinal: true
-      };
-      addMessage(errorMessage);
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!inputValue.trim() || isLoading) return;
+    
     sendMessage(inputValue);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(inputValue);
-    }
+    setInputValue('');
   };
 
   const renderMessages = () => {
-    // Sort final messages by timestamp for proper ordering
-    const sortedMessages = [...messages].sort((a, b) => 
-      a.timestamp.getTime() - b.timestamp.getTime()
-    );
-    
-    // Calculate visible content for streaming message
-    const streamingVisibleContent = streamingMessage 
-      ? (streamingChunks.length > 0 
-          ? streamingChunks[streamingChunks.length - 1] // Show latest chunk
-          : streamingMessage.content) // Fallback to full content
-      : '';
-    
-    const hasAnyMessages = sortedMessages.length > 0 || streamingMessage !== null;
-    
     return (
-      <div className={`flex-1 overflow-y-auto p-4 space-y-4 bg-[#1C1C1C]`}>
-        {!hasAnyMessages ? (
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#1C1C1C]">
+        {messages.length === 0 ? (
           <div className="text-center text-white py-8">
             <div className="w-12 h-12 mx-auto mb-3 text-white flex items-center justify-center">
               <img src="/icons/CoolChat.svg" alt="Sedona Health" className="w-6 h-6" style={{ filter: 'brightness(0) saturate(100%) invert(100%)' }} />
@@ -176,106 +120,46 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             <p className="text-sm font-medium text-white/70">Let's start designing new molecules.</p>
           </div>
         ) : (
-          <>
-            {/* Render FINAL messages */}
-            {sortedMessages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            {message.type === 'user' ? (
-              // User message - light blue bubble
-              <div className="max-w-[75%] px-4 py-2 rounded-2xl text-sm" style={{ backgroundColor: 'rgb(232, 243, 254)' }}>
-                {message.isVoice && (
-                  <div className="flex items-center gap-1 mb-1 text-xs" style={{ color: 'rgb(59, 130, 246)' }}>
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                    </svg>
-                    <span>Voice</span>
-                  </div>
-                )}
-                <p className="whitespace-pre-wrap text-gray-1500 font-medium">{message.content}</p>
-                <p className="text-xs mt-1 text-gray-1000">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-            ) : (
-              // Assistant message - no bubble, just text
-              <div className="max-w-[85%] text-sm">
-                {message.isVoice && (
-                  <div className="flex items-center gap-1 mb-1 text-xs text-gray-500">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                    </svg>
-                    <span>Voice</span>
-                  </div>
-                )}
-                <p className="whitespace-pre-wrap text-white font-medium leading-relaxed">{message.content}</p>
-                <p className="text-xs mt-1 text-gray-500">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-            )}
-          </div>
-        ))}
-        
-        {/* Render STREAMING message (in progress) */}
-        {streamingMessage && (
-          <div
-            key={streamingMessage.id}
-            className={`flex gap-3 ${streamingMessage.type === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            {streamingMessage.type === 'user' ? (
-              // User message streaming - light blue bubble
-              <div className="max-w-[75%] px-4 py-2 rounded-2xl text-sm" style={{ backgroundColor: 'rgb(232, 243, 254)' }}>
-                <div className="flex items-center gap-1 mb-1 text-xs" style={{ color: 'rgb(59, 130, 246)' }}>
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                  </svg>
-                  <span>Speaking...</span>
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              {message.type === 'user' ? (
+                // User message - light blue bubble
+                <div className="max-w-[75%] px-4 py-2 rounded-2xl text-sm" style={{ backgroundColor: 'rgb(232, 243, 254)' }}>
+                  <p className="whitespace-pre-wrap text-gray-1500 font-medium">
+                    {message.content}
+                    {message.isStreaming && (
+                      <span className="inline-block w-px h-4 bg-black ml-1 animate-pulse translate-y-px" />
+                    )}
+                  </p>
+                  <p className="text-xs mt-1 text-gray-1000">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-                <p className="whitespace-pre-wrap text-gray-1500 font-medium">
-                  {streamingVisibleContent}
-                  <span className="inline-block w-1 h-4 bg-gray-1000 ml-1 animate-pulse" />
-                </p>
-              </div>
-            ) : (
-              // Assistant message streaming - no bubble
-              <div className="max-w-[85%] text-sm">
-                <div className="flex items-center gap-1 mb-1 text-xs text-gray-500">
-                  <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                  </svg>
-                  <span>Speaking...</span>
+              ) : (
+                // Assistant message - no bubble, just text
+                <div className="max-w-[85%] text-sm">
+                  <p className="whitespace-pre-wrap text-white font-medium leading-relaxed">
+                    {message.content}
+                  </p>
+                  <p className="text-xs mt-1 text-gray-500">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
-                <p className="whitespace-pre-wrap text-white font-medium leading-relaxed">
-                  {streamingVisibleContent}
-                  <span className="inline-block w-1 h-4 bg-white/50 ml-1 animate-pulse" />
-                </p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          ))
         )}
-      </>
-      )}
-      
-      {/* Loading indicator - only show when waiting for response */}
-      {isLoading && !streamingMessage && (
-        <div className="flex gap-3">
-          <div className="px-3 py-2 rounded-lg flex items-center gap-2">
-            <RotatingSedonaLogo size={16} color="white" />
-            <span className="text-white text-sm">Thinking...</span>
-          </div>
-        </div>
-      )}
-      
-      <div ref={messagesEndRef} />
-    </div>
-  );
-};
+        
+        <div ref={messagesEndRef} />
+      </div>
+    );
+  };
 
-  const handleVoiceToggle = async () => {
-    await toggleVoice();
+  const handleVoiceToggle = () => {
+    toggleVoice();
   };
 
   const renderInput = () => (
@@ -285,20 +169,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         <div className="mb-2 flex items-center justify-between text-xs text-gray-750">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${
-              voiceConnectionStatus === 'connected' ? 'bg-biomarker-green' : 
-              voiceConnectionStatus === 'connecting' ? 'bg-yellow-500' : 
+              voiceActive ? 'bg-biomarker-green' : 
               'bg-red-500'
             }`} 
-            style={voiceConnectionStatus === 'connected' ? {
+            style={voiceActive ? {
               animation: 'pulse 2s ease-in-out infinite'
             } : undefined}
             />
             <span>
-              {voiceConnectionStatus === 'connected' 
-                ? (voiceAgentStatus === 'speaking' ? 'AI Speaking...' : 'Listening...')
-                : voiceConnectionStatus === 'connecting' 
-                  ? 'Connecting...' 
-                  : 'Disconnected'}
+              {voiceActive 
+                ? 'Listening...'
+                : 'Disconnected'}
             </span>
           </div>
           
@@ -328,23 +209,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           </button>
         )}
 
-        {/* Text input - works alongside voice mode */}
+        {/* Placeholder input - voice only mode */}
         <input
           type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder={voiceActive ? "Type or speak your message..." : "Ask another question"}
-          className="flex-1 px-3 py-2 bg-[#1B1B1B] text-white placeholder-gray-750 rounded-full border border-gray-1500 focus:outline-none focus:ring-1 focus:ring-gray-1000 text-sm disabled:opacity-50"
-          disabled={isLoading}
+          value=""
+          placeholder={voiceActive ? "Listening... speak your message" : "Click mic to start listening"}
+          className="flex-1 px-3 py-2 bg-[#1B1B1B] text-white placeholder-gray-750 rounded-full border border-gray-1500 text-sm opacity-75"
+          disabled={true}
+          readOnly
         />
-        <button
-          type="submit"
-          disabled={!inputValue.trim() || isLoading}
-          className="px-3 py-2 text-white flex items-center justify-center disabled:opacity-50"
-        >
-          <img src="/icons/Arrow.svg" alt="Send" className="w-6 h-6 transform rotate-180" style={{ filter: 'brightness(0) saturate(100%) invert(100%)' }} />
-        </button>
       </form>
     </div>
   );

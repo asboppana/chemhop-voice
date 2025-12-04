@@ -1,27 +1,24 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import HoverRotatingSedonaLogo from '@/components/animations/HoverRotatingSedonaLogo';
 import { useChatContext } from '@/contexts/ChatContext';
-import type { Message } from '@/contexts/ChatContext';
 
 interface AskBarProps {
   className?: string;
 }
 
 export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
-  const [question, setQuestion] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const dynamicWords = ['small molecule', 'protein', 'antibody', 'metabolite'];
   const [wordIndex, setWordIndex] = useState(0);
   const [charIndex, setCharIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   const { 
-    state: { voiceActive },
     openChat,
-    addMessage,
-    sendTextToVoice,
-    startVoice
+    startVoice,
+    sendMessage
   } = useChatContext();
 
   const getBaseTextForWord = (word: string) => {
@@ -31,9 +28,9 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
     return `Let's design ${useAn ? 'an ' : 'a '}`;
   };
 
+  // Only run animation when not focused and no input
   useEffect(() => {
-    // Don't animate while the user is actively typing something
-    if (question.trim().length > 0) return;
+    if (isFocused || inputValue) return;
 
     const currentWord = dynamicWords[wordIndex % dynamicWords.length];
 
@@ -67,102 +64,81 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
     }, timeout);
 
     return () => clearTimeout(timer);
-  }, [charIndex, isDeleting, wordIndex, question, dynamicWords]);
+  }, [charIndex, isDeleting, wordIndex, dynamicWords, isFocused, inputValue]);
 
   const currentWord = dynamicWords[wordIndex % dynamicWords.length];
   const baseText = getBaseTextForWord(currentWord);
   const animatedPlaceholder = `${baseText}${currentWord.slice(0, charIndex)}`;
 
-  const handleQuestionSubmit = async (question: string) => {
+  const handleVoiceClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Open chat and start voice listening
     openChat();
-    
-    // Auto-start voice if not active
-    if (!voiceActive) {
-      console.log('Voice not active, starting voice connection...');
-      await startVoice();
-      // Give it a moment to connect before sending
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    // Always use ElevenLabs agent for all messages
-    // sendTextToVoice will handle adding the user message to chat
-    const sent = sendTextToVoice(question);
-    
-    if (!sent) {
-      console.error('Failed to send to ElevenLabs agent');
-      // Add error message
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        type: 'assistant',
-        content: 'Sorry, I encountered an error connecting to the voice agent. Please try again.',
-        timestamp: new Date(),
-        isFinal: true
-      };
-      addMessage(errorMessage);
-    }
-    // ElevenLabs will handle the response through voice callbacks
+    startVoice();
+  };
+
+  const handleContainerClick = () => {
+    // Focus the input when clicking anywhere on the bar
+    inputRef.current?.focus();
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim()) return;
+    if (!inputValue.trim()) return;
 
-    handleQuestionSubmit(question.trim());
-    setQuestion('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
+    // Open chat and send message
+    openChat();
+    sendMessage(inputValue);
+    setInputValue('');
+    setIsFocused(false);
+    inputRef.current?.blur();
   };
 
   return (
     <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 ${className}`}>
-      <div className={`bg-white rounded-full drop-shadow-lg pl-4 pr-0 py-0 max-w-[calc(100vw-2rem)] transition-all duration-300 ease-out ${
-        isFocused ? 'w-[400px]' : 'w-[320px]'
-      }`}>
-        <form onSubmit={handleSubmit} className="flex items-center gap-4">
-          <HoverRotatingSedonaLogo size={24} color="black" className="flex-shrink-0" />
-          <div className="relative flex-1">
-            <input
-              ref={inputRef}
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              placeholder=""
-              className="w-full border-none outline-none text-gray-1500 placeholder-gray-1000 text-sm font-medium bg-transparent py-3 caret-gray-1500"
-            />
-            {question.trim().length === 0 && !isFocused && (
-              <div className="pointer-events-none absolute inset-0 flex items-center text-gray-1000 text-sm font-medium">
-                <span>{animatedPlaceholder}</span>
-                <span className="typing-caret" />
-              </div>
-            )}
-          </div>
+      <form
+        onSubmit={handleSubmit}
+        onClick={handleContainerClick}
+        className="bg-white rounded-full drop-shadow-lg px-6 py-3 hover:shadow-xl transition-all duration-300 ease-out flex items-center gap-4 cursor-text"
+        style={{
+          width: isFocused || inputValue ? '450px' : '320px',
+          transition: 'width 0.3s ease-out'
+        }}
+      >
+        <HoverRotatingSedonaLogo size={24} color="black" className="flex-shrink-0" />
+        
+        <div className="flex-1 relative text-gray-1000 text-sm font-medium">
+          {/* Animated placeholder - only show when not focused and no input */}
+          {!isFocused && !inputValue && (
+            <div className="absolute inset-0 flex items-center gap-2 pointer-events-none">
+              <span>{animatedPlaceholder}</span>
+              <span className="typing-caret" />
+            </div>
+          )}
           
-          <button
-            type="submit"
-            disabled={!question.trim()}
-            className="flex-shrink-0 transition-all duration-200 pr-2"
-          >
-            {question.trim() ?      
-            <img
-              src="/icons/Arrow.svg"
-              alt="Send"
-              className={`w-8 h-8 rotate-180 filter invert`}
-            /> : <img
-              src="/icons/GrayArrow.svg"
-              alt="Ask"
-              className={`w-8 h-8`}
-            />}
-          </button>
-        </form>
-      </div>
+          {/* Actual input field */}
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            className="w-full bg-transparent outline-none text-gray-1000 placeholder-gray-500"
+            placeholder={isFocused ? "Type your message..." : ""}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleVoiceClick}
+          className="flex-shrink-0"
+        >
+          <svg className="w-5 h-5 text-gray-1500" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </form>
     </div>
   );
 };

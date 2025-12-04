@@ -12,6 +12,7 @@ Run with: python -m src.services.mcp.mcp_server
 """
 
 import sys
+import logging
 from pathlib import Path
 from typing import Any, Dict
 
@@ -21,6 +22,20 @@ from typing import Optional
 
 import requests
 from fastmcp import FastMCP
+
+# Configure logging with colors
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+# Color codes for terminal output
+_COLOR_GREEN = "\033[92m"
+_COLOR_BLUE = "\033[94m"
+_COLOR_YELLOW = "\033[93m"
+_COLOR_RESET = "\033[0m"
 
 # Add the backend directory to sys.path for imports
 backend_dir = Path(__file__).resolve().parent.parent.parent.parent
@@ -98,12 +113,14 @@ def annotate_molecule(smiles: str) -> Dict[str, Any]:
             ]
         }
     """
+    print(f"{_COLOR_GREEN}[MCP TOOL] annotate_molecule called with smiles={smiles[:50]}{_COLOR_RESET}", flush=True)
     try:
         from rdkit import Chem
         
         # Parse the SMILES string
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
+            print(f"{_COLOR_YELLOW}[MCP TOOL] annotate_molecule: Invalid SMILES{_COLOR_RESET}", flush=True)
             return {
                 "error": f"Invalid SMILES string: {smiles}",
                 "smiles": smiles
@@ -111,8 +128,10 @@ def annotate_molecule(smiles: str) -> Dict[str, Any]:
         
         # Annotate the molecule
         result = smart_chemist.mol_to_annotation_json(mol)
+        print(f"{_COLOR_GREEN}[MCP TOOL] annotate_molecule: Found {len(result.get('matches', []))} functional groups{_COLOR_RESET}", flush=True)
         return result
     except Exception as e:
+        print(f"{_COLOR_YELLOW}[MCP TOOL] annotate_molecule error: {e}{_COLOR_RESET}", flush=True)
         return {
             "error": str(e),
             "smiles": smiles
@@ -121,6 +140,7 @@ def annotate_molecule(smiles: str) -> Dict[str, Any]:
 @mcp.tool()
 def get_smiles_from_name(chemical_name: str) -> Dict[str, Any]:
     """Get SMILES string from name"""
+    print(f"{_COLOR_GREEN}[MCP TOOL] get_smiles_from_name called with chemical_name={chemical_name}{_COLOR_RESET}", flush=True)
     
     get_smile_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{chemical_name}/property/CanonicalSMILES/JSON"
     response = requests.get(get_smile_url)
@@ -131,10 +151,12 @@ def get_smiles_from_name(chemical_name: str) -> Dict[str, Any]:
         canonical_smiles = response_json["PropertyTable"]["Properties"][0].get("ConnectivitySMILES", None)
     
     if canonical_smiles is None:
+        print(f"{_COLOR_YELLOW}[MCP TOOL] get_smiles_from_name: No SMILES found{_COLOR_RESET}", flush=True)
         return {
             "error": f"No SMILES found for {chemical_name}",
         }
     
+    print(f"{_COLOR_GREEN}[MCP TOOL] get_smiles_from_name: Found SMILES={canonical_smiles[:50]}{_COLOR_RESET}", flush=True)
     return {
         "smiles": canonical_smiles
     }
@@ -169,14 +191,17 @@ def convert_identifier_to_smiles(identifier: str) -> Dict[str, Any]:
             "count": 1
         }
     """
+    print(f"{_COLOR_GREEN}[MCP TOOL] convert_identifier_to_smiles called with identifier={identifier}{_COLOR_RESET}", flush=True)
     try:
         smiles_list = convert_string_input_to_smiles(identifier)
+        print(f"{_COLOR_GREEN}[MCP TOOL] convert_identifier_to_smiles: Converted to {len(smiles_list)} SMILES{_COLOR_RESET}", flush=True)
         return {
             "identifier": identifier,
             "smiles_list": smiles_list,
             "count": len(smiles_list)
         }
     except Exception as e:
+        print(f"{_COLOR_YELLOW}[MCP TOOL] convert_identifier_to_smiles error: {e}{_COLOR_RESET}", flush=True)
         return {
             "error": str(e),
             "identifier": identifier,
@@ -196,12 +221,16 @@ def check_molecule_patent(smiles: str) -> Dict[str, Any]:
     Returns:
         Patent status with is_patented, fto_status, confidence, patents list
     """
+    print(f"{_COLOR_GREEN}[MCP TOOL] check_molecule_patent called with smiles={smiles[:50]}{_COLOR_RESET}", flush=True)
     try:
-        return patent_tool.check_patent(smiles)
+        result = patent_tool.check_patent(smiles)
+        print(f"{_COLOR_GREEN}[MCP TOOL] check_molecule_patent: is_patented={result.get('is_patented')}{_COLOR_RESET}", flush=True)
+        return result
     except ValueError as e:
+        print(f"{_COLOR_YELLOW}[MCP TOOL] check_molecule_patent error: {e}{_COLOR_RESET}", flush=True)
         return {"error": str(e), "smiles": smiles, "is_patented": None}
     except Exception as e:
-        # logger.error(f"Patent check error: {e}")
+        print(f"{_COLOR_YELLOW}[MCP TOOL] check_molecule_patent error: {e}{_COLOR_RESET}", flush=True)
         return {"error": f"Patent check failed: {str(e)}", "smiles": smiles}
 
 
@@ -283,6 +312,7 @@ def scan_for_bioisosteres(
             ]
         }
     """
+    print(f"{_COLOR_GREEN}[MCP TOOL] scan_for_bioisosteres called with query_smiles={query_smiles[:50]}, top_k={top_k}, min_similarity={min_similarity}{_COLOR_RESET}", flush=True)
     try:
         # Call the scanner
         results = ring_scanner.scan(
@@ -296,12 +326,14 @@ def scan_for_bioisosteres(
             h_acceptor_tolerance=h_acceptor_tolerance
         )
         
+        print(f"{_COLOR_GREEN}[MCP TOOL] scan_for_bioisosteres: Found {len(results)} bioisosteres{_COLOR_RESET}", flush=True)
         return {
             "query_smiles": query_smiles,
             "num_results": len(results),
             "results": results
         }
     except Exception as e:
+        print(f"{_COLOR_YELLOW}[MCP TOOL] scan_for_bioisosteres error: {e}{_COLOR_RESET}", flush=True)
         return {
             "error": str(e),
             "query_smiles": query_smiles,

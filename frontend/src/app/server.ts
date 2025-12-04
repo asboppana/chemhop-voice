@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { supabase } from '@/lib/supabase';
 import { env } from './env';
 
 const BASE_URL = env.VITE_API_BASE_URL;
@@ -102,22 +101,8 @@ function makeAuthInvalidHandler(client: any) {
     // If this is a 401 and we haven't tried refreshing yet, attempt token refresh
     if (error.response?.status === 401 && !original._retriedRefresh) {
       try {
-        // Try to refresh the session using Supabase
-        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
-        
-        if (session && !refreshError && session.access_token) {
-          // Update the token in localStorage
-          localStorage.setItem('authToken', session.access_token);
-          if (session.refresh_token) {
-            localStorage.setItem('refreshToken', session.refresh_token);
-          }
-          
-          // Retry the original request with the new token
-          original._retriedRefresh = true;
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${session.access_token}`;
-          return client.request(original);
-        }
+        // No refresh needed for API tokens
+        return Promise.reject(error);
       } catch (refreshErr) {
         console.error('Token refresh failed:', refreshErr);
         // Fall through to logout logic
@@ -136,8 +121,8 @@ function makeAuthInvalidHandler(client: any) {
       if (original.headers) delete original.headers.Authorization;
       return client.request(original);
     } else {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
+      // Sign out from your application (if applicable)
+      clearAuthSideEffects();
       const redirect = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.href = `/login?redirect=${redirect}`;
       // Prevent further promise chains; navigation will take over
@@ -179,7 +164,7 @@ const llmAPI = {
 };
 
 const voiceAPI = {
-  getVoiceAgentId: () => server.get('/voice-agent'),
+  callChatAgent: (data: { messages: { role: 'user' | 'assistant', content: string }[], model?: string }) => server.post('/chat', data).then(res => res.data),
 };
 
 export default {
