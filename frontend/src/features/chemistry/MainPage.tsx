@@ -38,6 +38,11 @@ export const ChemistryMainPage: React.FC = () => {
   const [scanningQueries, setScanningQueries] = useState(false);
   const [bioisostereSvgs, setBioisostereSvgs] = useState<Map<string, string>>(new Map()); // SMILES -> SVG
   const [loadingSvgs, setLoadingSvgs] = useState(false);
+  
+  // Agent-generated molecules state
+  const [agentGeneratedMolecules, setAgentGeneratedMolecules] = useState<string[]>([]);
+  const [generatingWithAgent, setGeneratingWithAgent] = useState(false);
+  const [agentResponse, setAgentResponse] = useState<string | null>(null);
 
   // ===========================================================================
   // STRUCTURED DATA FROM CHAT
@@ -346,8 +351,104 @@ export const ChemistryMainPage: React.FC = () => {
     setSelectedPatterns(new Set());
     setBioisostereResults(new Map());
     setBioisostereSvgs(new Map());
+    setAgentGeneratedMolecules([]);
+    setAgentResponse(null);
     if (result) {
       setDisplayedSvg(result.svg);
+    }
+  };
+  
+  // Handle bio-isostere match click - send to agent and parse SMILES from response
+  const handleBioisostereClick = async (
+    patternIdx: number,
+    matchSmiles: string,
+    queryGroupLetter: string
+  ) => {
+    if (!result) return;
+    
+    // Get filtered matches to access the source pattern
+    const filteredMatches = result.matches.filter(match => 
+      match.trivial_name.group.toLowerCase().includes('cyclic') ||
+      match.trivial_name.group.toLowerCase().includes('biological') ||
+      match.trivial_name.group.toLowerCase().includes('ring')
+    );
+    
+    const sourcePattern = filteredMatches[patternIdx];
+    if (!sourcePattern) return;
+    
+    setGeneratingWithAgent(true);
+    setAgentGeneratedMolecules([]);
+    setAgentResponse(null);
+    
+    try {
+      // Serialize the data for the agent
+      const agentMessage = `Please replace the bio-isostere pattern in the molecule. Here is the data:
+
+Source Molecule SMILES: ${analyzedSmiles}
+Source Pattern SMILES: ${sourcePattern.trivial_name.smarts}
+Source Pattern Atom Indices: [${sourcePattern.atom_indices.join(', ')}]
+Matched Bio-isostere SMILES: ${matchSmiles}
+Query Group Letter: ${queryGroupLetter}
+
+Please use the replace-substructure tool to generate variant molecules by replacing the source pattern with the matched bio-isostere. Return only the SMILES strings of the generated molecules, one per line.`;
+
+      console.log('Sending to agent:', agentMessage);
+      
+      // Call the chat agent
+      const chatResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: agentMessage
+            }
+          ]
+        })
+      });
+      
+      if (!chatResponse.ok) {
+        throw new Error(`Agent request failed: ${chatResponse.status}`);
+      }
+      
+      const agentResult = await chatResponse.json();
+      console.log('Agent response:', agentResult);
+      
+      const responseText = agentResult.response || '';
+      setAgentResponse(responseText);
+      
+      // Parse SMILES strings from the agent's response
+      // Look for lines that look like SMILES (alphanumeric with special chars)
+      const smilesPattern = /^[A-Za-z0-9@+\-\[\]()=#$:.\/\\%]+$/;
+      const lines = responseText.split('\n').map((line: string) => line.trim());
+      const smilesList: string[] = [];
+      
+      for (const line of lines) {
+        if (line && smilesPattern.test(line) && line.length > 5) {
+          smilesList.push(line);
+        }
+      }
+      
+      console.log('Parsed SMILES from agent:', smilesList);
+      
+      if (smilesList.length > 0) {
+        setAgentGeneratedMolecules(smilesList);
+        
+        // Display the first generated molecule
+        const svgResponse = await generateSvg(smilesList[0], 400, 400);
+        setDisplayedSvg(svgResponse.svg);
+      } else {
+        console.warn('No valid SMILES found in agent response');
+      }
+      
+    } catch (err: any) {
+      console.error('Error communicating with agent:', err);
+      setError(err.message || 'Failed to generate molecules with agent');
+    } finally {
+      setGeneratingWithAgent(false);
     }
   };
 
@@ -615,7 +716,43 @@ export const ChemistryMainPage: React.FC = () => {
               })()}
             </div>
 
-            {/* Bioisostere Results */}
+            {/* Agent Generated Molecules */}
+            {agentGeneratedMolecules.length > 0 && (
+              <div className="mt-12 border-t border-gray-300 pt-6">
+                <h2 className="text-lg font-light mb-6 uppercase tracking-wider text-black">
+                  Agent Generated Molecules ({agentGeneratedMolecules.length})
+                </h2>
+                
+                {agentResponse && (
+                  <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Agent Response:</p>
+                    <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono">{agentResponse}</pre>
+                  </div>
+                )}
+                
+                <div className="space-y-4">
+                  {agentGeneratedMolecules.map((smiles, idx) => (
+                    <div key={idx} className="border border-gray-300 rounded-lg p-4 bg-white">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-medium">Molecule {idx + 1}</h3>
+                        <button
+                          onClick={async () => {
+                            const svgResponse = await generateSvg(smiles, 400, 400);
+                            setDisplayedSvg(svgResponse.svg);
+                          }}
+                          className="text-xs bg-black text-white px-3 py-1 rounded hover:bg-gray-800 transition-colors"
+                        >
+                          View
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-600 font-mono break-all">{smiles}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bio-isostere Results */}
             {bioisostereResults.size > 0 && result && (() => {
               const filteredMatches = result.matches.filter(match => 
                 match.trivial_name.group.toLowerCase().includes('cyclic') ||
@@ -671,11 +808,19 @@ export const ChemistryMainPage: React.FC = () => {
                           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
                             {scanResult.matches.map((match, matchIdx) => {
                               const svg = bioisostereSvgs.get(match.centroid_smiles);
+                              const queryGroupLetter = indexToLetter(patternIdx);
                               
                               return (
-                                <div
+                                <button
                                   key={matchIdx}
-                                  className="border border-gray-300 rounded p-2 bg-white hover:border-gray-400 transition-colors flex flex-col w-full"
+                                  onClick={() => handleBioisostereClick(patternIdx, match.centroid_smiles, queryGroupLetter)}
+                                  disabled={generatingWithAgent}
+                                  className={`border border-gray-300 rounded p-2 bg-white transition-colors flex flex-col w-full text-left ${
+                                    generatingWithAgent 
+                                      ? 'cursor-not-allowed opacity-50' 
+                                      : 'hover:border-gray-400 hover:shadow-md cursor-pointer'
+                                  }`}
+                                  title={`Click to send pattern ${queryGroupLetter} to agent for replacement`}
                                 >
                                   {/* Header */}
                                   <div className="flex items-center justify-between mb-1">
@@ -723,7 +868,7 @@ export const ChemistryMainPage: React.FC = () => {
                                       <span className="font-mono text-gray-600 capitalize">{match.source}</span>
                                     </div>
                                   </div>
-                                </div>
+                                </button>
                               );
                             })}
                           </div>
