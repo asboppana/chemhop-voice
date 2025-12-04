@@ -536,59 +536,92 @@ class MoleculeController:
         print(f"Canonical Source: {canonical_source}")
         print(f"Canonical Replacement: {canonical_replacement}")
         
-        # Initialize OpenAI client
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Initialize LM Studio client (OpenAI-compatible API)
+        # LM Studio runs locally on port 1234 by default
+        lm_studio_url = os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
+        client = OpenAI(
+            base_url=lm_studio_url,
+            api_key="lm-studio"  # LM Studio doesn't require a real API key
+        )
         
-        # Construct the prompt
-        system_prompt = """You are an expert computational chemist. Replace the source fragment in the molecule with the replacement fragment while maintaining proper chemical connectivity and valence.
+        # Construct the prompt for JSON structured output
+        system_prompt = """You are an expert computational chemist specializing in molecular structure manipulation and SMILES notation.
 
-You must respond in EXACTLY this format:
-SMILES: <the resulting SMILES string>
+Your task: Replace a specific substructure (source fragment) in a molecule with a different fragment (replacement fragment) while maintaining proper chemical connectivity and valence.
 
-Only output the SMILES line, nothing else."""
+CRITICAL RULES:
+1. The source fragment must be found and replaced in the original molecule
+2. Maintain all chemical bonds and connectivity outside the replaced region
+3. Ensure the replacement fragment connects at analogous positions to the source fragment
+4. The resulting molecule must be chemically valid with correct valence for all atoms
+
+You must respond with valid JSON in this exact format:
+{
+  "result_smiles": "the resulting molecule SMILES string after replacement"
+}
+
+Only output valid JSON. Do not include any explanation or additional text outside the JSON."""
 
         user_prompt = f"""Replace the source fragment with the replacement fragment in the original molecule.
 
-Original Molecule: {canonical_original}
+Original Molecule SMILES: {canonical_original}
 Source Fragment to Replace: {canonical_source}  
-Replacement Fragment: {canonical_replacement}"""
+Replacement Fragment: {canonical_replacement}
+
+Output your answer as JSON with a single field "result_smiles" containing the resulting molecule SMILES."""
 
         try:
-            # Call GPT
+            # Call local LM Studio
+            # Note: LM Studio doesn't support response_format like OpenAI
+            # We rely on prompt engineering to get JSON output
+            print(f"Calling LM Studio at {lm_studio_url}...")
             response = client.chat.completions.create(
-                model="gpt-5.1-2025-11-13",
+                model="gpt-oss-20b",  # Or whatever model name is loaded in LM Studio
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,  # Low temperature for more deterministic output
-                max_completion_tokens=1000
+                temperature=0.1,
+                max_tokens=120000
             )
             
             response_text = response.choices[0].message.content.strip()
-            print(f"GPT Response: {response_text}")
+            print(f"LM Studio Response: {response_text}")
             
-            # Extract SMILES from "SMILES: <value>" format
+            # Parse JSON response
             result_smiles = None
-            print("RESPONSE TEXT:", response_text)
-            if response_text.startswith("SMILES:"):
-                result_smiles = response_text[7:].strip()
-            else:
-                # Try regex as fallback
-                smiles_match = re.search(r'SMILES:\s*(.+)', response_text)
-                if smiles_match:
-                    result_smiles = smiles_match.group(1).strip()
+            try:
+                import json
+                response_data = json.loads(response_text)
+                result_smiles = response_data.get("result_smiles", "").strip()
+                print(f"Parsed result_smiles from JSON: {result_smiles}")
+            except json.JSONDecodeError as json_err:
+                print(f"JSON parsing error: {json_err}")
+                print(f"Raw response: {response_text}")
+                
+                # Fallback: try to extract SMILES from malformed response
+                # Try "SMILES:" format
+                if "SMILES:" in response_text:
+                    smiles_match = re.search(r'SMILES:\s*([^\n,}]+)', response_text)
+                    if smiles_match:
+                        result_smiles = smiles_match.group(1).strip().strip('"')
+                
+                # Try JSON field extraction
+                if not result_smiles:
+                    smiles_match = re.search(r'"result_smiles"\s*:\s*"([^"]+)"', response_text)
+                    if smiles_match:
+                        result_smiles = smiles_match.group(1).strip()
+                
+                # Last resort: treat entire response as SMILES
+                if not result_smiles:
+                    candidate = response_text.strip().strip('`{}').strip('"').splitlines()[0].strip()
+                    if candidate and len(candidate) > 10:
+                        candidate_mol = Chem.MolFromSmiles(candidate, sanitize=False)
+                        if candidate_mol:
+                            print("Falling back to direct SMILES extraction.")
+                            result_smiles = candidate
             
-            # Final fallback: treat full response as SMILES if it looks like plain text
-            if not result_smiles:
-                candidate = response_text.strip().strip('`').splitlines()[0].strip()
-                if candidate:
-                    candidate_mol = Chem.MolFromSmiles(candidate, sanitize=False)
-                    if candidate_mol:
-                        print("Falling back to direct SMILES extraction.")
-                        result_smiles = candidate
-            
-            print(f"Extracted SMILES: {result_smiles}")
+            print(f"Final extracted SMILES: {result_smiles}")
             
             if not result_smiles:
                 print("SMILESSS:", result_smiles)

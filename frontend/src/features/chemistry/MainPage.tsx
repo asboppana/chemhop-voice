@@ -12,7 +12,7 @@ const EXAMPLE_MOLECULES = [
   { name: 'Sildenafil', description: 'PDE5 inhibitor (Viagra)', smiles: 'CCCC1=NN(C2=C1N=C(NC2=O)C3=C(C=CC(=C3)S(=O)(=O)N4CCN(CC4)C)OCC)C' },
   { name: 'Ribociclib', description: 'CDK4/6 inhibitor', smiles: 'CN1CCN(CC1)c2nc(Nc3ccc(cc3)N4CCNCC4)nc(n2)C5CCCCC5' },
   { name: 'Lapatinib', description: 'Dual kinase inhibitor', smiles: 'CS(=O)(=O)CCNCc1ccc(cc1Cl)c2ccc3ncnc(Oc4ccc(F)c(Cl)c4)c3c2' },
-  { name: 'Sunitinib', description: 'Multi-kinase inhibitor', smiles: 'CCN(CC)CCNC(=O)c1c(C)[nH]c(c1C)c2c[nH]c(=O)c(c2)c3cc(F)ccc3' },
+  { name: 'Osimertinib', description: 'Multi-kinase inhibitor', smiles: 'CN1C=C(C2=CC=CC=C21)C3=NC(=NC=C3)NC4=C(C=C(C(=C4)NC(=O)C=C)N(C)CCN(C)C)OC' },
   { name: 'Osimertinib', description: 'EGFR inhibitor', smiles: 'COc1cc(N(C)CCN(C)C)c(NC(=O)C=C)cc1Nc2nccc(n2)c3cn(C4CC4)c4ccccc34' },
   { name: 'Erlotinib', description: 'EGFR inhibitor', smiles: 'COCCOc1cc2c(Nc3cccc(c3)C#C)ncnc2cc1OCCOC' },
 ];
