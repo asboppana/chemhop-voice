@@ -431,6 +431,7 @@ class BioisostereScanner:
         
         return similarities
     
+    
     def scan(
         self,
         query_smiles: str,
@@ -795,3 +796,8 @@ def get_scanner() -> BioisostereScanner:
     if _scanner_instance is None:
         _scanner_instance = BioisostereScanner()
     return _scanner_instance
+
+
+if __name__ == "__main__":
+    scanner = get_scanner()
+    print(scanner.scan("c1ccccc1"))

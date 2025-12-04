@@ -50,8 +50,6 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
-    settings = get_settings()
-    
     app = FastAPI(
         title="US Hacks API V1",
         description="Clean Architecture Backend for US Hacks Platform with Supabase",

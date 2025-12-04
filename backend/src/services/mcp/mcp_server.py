@@ -3,8 +3,10 @@ MCP Server for Drug Discovery Tools.
 
 This server exposes chemistry and drug discovery tools via the Model Context Protocol (MCP).
 It provides access to:
-- ADMET AI: Predict ADMET properties for molecules
 - Smart Chemist: Annotate molecular structures with functional groups
+- Ring Scanner: Find bio-isosteric ring replacements
+
+Note: ADMET AI predictions are now available via a separate MCP server (admet-service).
 
 Run with: python -m src.services.mcp.mcp_server
 """
@@ -20,72 +22,18 @@ backend_dir = Path(__file__).resolve().parent.parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-# Import our tools
-from src.services.mcp.admet_tools.admet_ai_tool import ADMETAITool
-from src.services.mcp.smart_chemist.tools.smart_chemist import (
+from src.services.mcp.smart_chemist.tools.smart_chemist import (  # noqa: E402
     SmartChemist,
     convert_string_input_to_smiles,
 )
+from src.services.mcp.ring_scan.tools.bioisostere_scanner import get_scanner  # noqa: E402
 
 # Initialize FastMCP server
 mcp = FastMCP("drugdiscovery_mcp")
 
 # Initialize tool instances
-admet_tool = ADMETAITool()
 smart_chemist = SmartChemist()
-
-
-@mcp.tool()
-def predict_admet_properties(smiles: str) -> Dict[str, Any]:
-    """
-    Predict ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) 
-    properties for a molecule using its SMILES string representation.
-    
-    This tool uses the ADMET AI model to predict various pharmacokinetic and 
-    toxicity properties that are critical for drug development, including:
-    - Absorption properties (e.g., Caco-2 permeability, solubility)
-    - Distribution properties (e.g., plasma protein binding, volume of distribution)
-    - Metabolism properties (e.g., CYP enzyme inhibition)
-    - Excretion properties (e.g., clearance, half-life)
-    - Toxicity properties (e.g., hERG inhibition, hepatotoxicity)
-    
-    Args:
-        smiles: SMILES string representation of the molecule
-                Examples: "CCO" (ethanol), "c1ccccc1" (benzene), 
-                         "CC(=O)Oc1ccccc1C(=O)O" (aspirin)
-    
-    Returns:
-        Dictionary containing:
-        - smiles: The input SMILES string
-        - predictions: Dictionary of predicted ADMET properties with property 
-                      names as keys and predicted values/scores as values
-    
-    Raises:
-        ValueError: If the SMILES string is invalid or prediction fails
-    
-    Example:
-        >>> predict_admet_properties("CCO")
-        {
-            "smiles": "CCO",
-            "predictions": {
-                "Caco2_Wang": 0.234,
-                "Solubility_AqSolDB": -0.234,
-                "HIA_Hou": 0.95,
-                ...
-            }
-        }
-    """
-    try:
-        predictions = admet_tool.predict(smiles)
-        return {
-            "smiles": smiles,
-            "predictions": predictions
-        }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "smiles": smiles
-        }
+ring_scanner = get_scanner()
 
 
 @mcp.tool()
@@ -205,6 +153,111 @@ def convert_identifier_to_smiles(identifier: str) -> Dict[str, Any]:
             "identifier": identifier,
             "smiles_list": [],
             "count": 0
+        }
+
+
+@mcp.tool()
+def scan_for_bioisosteres(
+    query_smiles: str,
+    top_k: int = 20,
+    min_similarity: float = 0.3,
+    use_bio_filters: bool = True,
+    logp_tolerance: float = 1.5,
+    tpsa_tolerance: float = 25.0,
+    h_donor_tolerance: int = 1,
+    h_acceptor_tolerance: int = 2
+) -> Dict[str, Any]:
+    """
+    Scan for bio-isosteric ring replacements for a given ring structure.
+    
+    This tool searches through a comprehensive database of ~34,000 ring systems
+    to find bio-isosteric replacements - rings that maintain similar biological
+    activity while potentially offering improved properties. The scan uses:
+    - Structural similarity (Morgan fingerprints)
+    - 2D pharmacophore similarity (functional group patterns)
+    - Ring topology matching (ring sizes and fusion patterns)
+    - Physicochemical property filters (logP, TPSA, H-bonding, aromaticity)
+    
+    Results are searched hierarchically from three sources (highest priority first):
+    1. Ertl dataset - well-characterized medicinal chemistry rings
+    2. ChemSpace collections - focused bioisostere libraries
+    3. Novel ring clusters - diverse ring systems from literature
+    
+    Args:
+        query_smiles: SMILES string of the query ring structure
+                     Examples: "c1ccccc1" (benzene), "C1CCNCC1" (piperidine)
+        top_k: Number of top matches to return (default: 20, range: 1-100)
+        min_similarity: Minimum Tanimoto similarity threshold (default: 0.3, range: 0.0-1.0)
+        use_bio_filters: Apply physicochemical property filters (default: True)
+        logp_tolerance: Maximum logP difference for bio-isosteres (default: 1.5)
+        tpsa_tolerance: Maximum TPSA difference in Ų (default: 25.0)
+        h_donor_tolerance: Maximum H-donor count difference (default: 1)
+        h_acceptor_tolerance: Maximum H-acceptor count difference (default: 2)
+    
+    Returns:
+        Dictionary containing:
+        - query_smiles: The input query SMILES
+        - num_results: Number of bio-isosteres found
+        - results: List of bio-isosteric replacements, each containing:
+            - source: Data source ("ertl", "chemspace", or "clusters")
+            - centroid_smiles: SMILES of the bio-isostere
+            - similarity: Structural similarity score (0-1)
+            - bio_isostere_score: Combined bio-isostere score (0-1)
+            - pharmacophore_similarity: 2D pharmacophore similarity (0-1)
+            - topology_similarity: Ring topology similarity (0-1)
+            - descriptors: Physicochemical properties (logP, TPSA, etc.)
+            - delta_properties: Property differences from query
+            - cluster_id: (for cluster results) ID of the cluster
+            - num_members: (for cluster results) Number of members in cluster
+            - example_smiles: (for cluster results) Example SMILES from cluster
+    
+    Raises:
+        ValueError: If the SMILES string is invalid or scan fails
+    
+    Example:
+        >>> scan_for_bioisosteres("c1ccccc1", top_k=10, min_similarity=0.2, use_bio_filters=True)
+        {
+            "query_smiles": "c1ccccc1",
+            "num_results": 5,
+            "results": [
+                {
+                    "source": "ertl",
+                    "centroid_smiles": "c1ccncc1",
+                    "similarity": 0.85,
+                    "bio_isostere_score": 0.82,
+                    "pharmacophore_similarity": 0.78,
+                    "topology_similarity": 0.95,
+                    "descriptors": {"logp": 0.65, "tpsa": 12.9, ...},
+                    "delta_properties": {"delta_logp": 1.24, ...}
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        # Call the scanner
+        results = ring_scanner.scan(
+            query_smiles=query_smiles,
+            top_k=top_k,
+            min_similarity=min_similarity,
+            use_bio_filters=use_bio_filters,
+            logp_tolerance=logp_tolerance,
+            tpsa_tolerance=tpsa_tolerance,
+            h_donor_tolerance=h_donor_tolerance,
+            h_acceptor_tolerance=h_acceptor_tolerance
+        )
+        
+        return {
+            "query_smiles": query_smiles,
+            "num_results": len(results),
+            "results": results
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "query_smiles": query_smiles,
+            "num_results": 0,
+            "results": []
         }
 
 

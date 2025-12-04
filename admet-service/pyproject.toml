@@ -1,0 +1,35 @@
+[project]
+name = "admet-service"
+version = "0.1.0"
+description = "ADMET AI MCP Server - Isolated service for molecular property predictions"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # ADMET AI and its dependencies
+    "admet-ai==1.4.0",
+    "chemprop==1.6.1",
+    "chemfunc>=1.0.12",
+    
+    # Chemistry libraries
+    "rdkit>=2025.9.3",
+    "pandas<=2.2.0",
+    
+    # ML/DL frameworks
+    "torch==2.5.0",
+    "lightning>=2.6.0",
+    "numpy==1.26.4",
+    # MCP server
+    "fastmcp",
+    "mcp[cli]>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
