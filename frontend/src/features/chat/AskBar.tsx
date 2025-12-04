@@ -13,55 +13,40 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   
   const { 
-    openChat, 
-    setLoading, 
-    addMessage
+    state: { voiceActive },
+    openChat,
+    addMessage,
+    sendTextToVoice,
+    startVoice
   } = useChatContext();
 
   const handleQuestionSubmit = async (question: string) => {
-    // Add user message to chat
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: question,
-      timestamp: new Date()
-    };
+    openChat();
     
-    addMessage(userMessage);
-    openChat(); // Use new action instead of setIsChatPanelOpen(true)
-    setLoading(true);
+    // Auto-start voice if not active
+    if (!voiceActive) {
+      console.log('Voice not active, starting voice connection...');
+      await startVoice();
+      // Give it a moment to connect before sending
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     
-    try {
-      // TODO: Replace with actual API call to your backend
-      console.log('Submitting question:', question);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulate assistant response
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: `Feature coming soon!`,
-        timestamp: new Date()
-      };
-      
-      addMessage(assistantMessage);
-    } catch (error) {
-      console.error('Error submitting question:', error);
-      
+    // Always use ElevenLabs agent for all messages
+    // sendTextToVoice will handle adding the user message to chat
+    const sent = sendTextToVoice(question);
+    
+    if (!sent) {
+      console.error('Failed to send to ElevenLabs agent');
       // Add error message
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: Date.now().toString(),
         type: 'assistant',
-        content: 'Sorry, I encountered an error while processing your question. Please try again.',
+        content: 'Sorry, I encountered an error connecting to the voice agent. Please try again.',
         timestamp: new Date()
       };
-      
       addMessage(errorMessage);
-    } finally {
-      setLoading(false);
     }
+    // ElevenLabs will handle the response through voice callbacks
   };
 
   const handleSubmit = (e: React.FormEvent) => {

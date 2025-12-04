@@ -18,7 +18,7 @@ async def get_voice_agent_id(request: Request):
     The agent ID is used by the frontend to initialize the ElevenLabs conversation widget.
     """
     agent_id = getattr(request.app.state, "voice_agent_id", None)
-    
+    print(f"\033[91m{agent_id}\033[0m")
     if not agent_id:
         raise HTTPException(
             status_code=503,

@@ -179,7 +179,7 @@ const llmAPI = {
 };
 
 const voiceAPI = {
-  getVoiceAgentId: () => server.get('/voice-agent').then(res => res.data),
+  getVoiceAgentId: () => server.get('/voice-agent'),
 };
 
 export default {
