@@ -22,10 +22,13 @@ backend_dir = Path(__file__).resolve().parent.parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
+# Import our tools
+from src.services.mcp.smart_chemist.tools.smart_chemist import (
 from src.services.mcp.smart_chemist.tools.smart_chemist import (  # noqa: E402
     SmartChemist,
     convert_string_input_to_smiles,
 )
+from src.services.mcp.patent_search.surechembl_tool import SureChEMBLPatentTool
 from src.services.mcp.ring_scan.tools.bioisostere_scanner import get_scanner  # noqa: E402
 
 # Initialize FastMCP server
@@ -33,6 +36,7 @@ mcp = FastMCP("drugdiscovery_mcp")
 
 # Initialize tool instances
 smart_chemist = SmartChemist()
+patent_tool = SureChEMBLPatentTool()
 ring_scanner = get_scanner()
 
 
@@ -154,6 +158,26 @@ def convert_identifier_to_smiles(identifier: str) -> Dict[str, Any]:
             "smiles_list": [],
             "count": 0
         }
+
+@mcp.tool()
+def check_molecule_patent(smiles: str) -> Dict[str, Any]:
+    """
+    Check if molecule appears in patent literature (SureChEMBL).
+    Quick FTO check - NOT legal advice, consult patent attorney.
+    
+    Args:
+        smiles: SMILES string of molecule
+        
+    Returns:
+        Patent status with is_patented, fto_status, confidence, patents list
+    """
+    try:
+        return patent_tool.check_patent(smiles)
+    except ValueError as e:
+        return {"error": str(e), "smiles": smiles, "is_patented": None}
+    except Exception as e:
+        # logger.error(f"Patent check error: {e}")
+        return {"error": f"Patent check failed: {str(e)}", "smiles": smiles}
 
 
 @mcp.tool()
