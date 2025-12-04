@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import HoverRotatingSedonaLogo from '@/components/animations/HoverRotatingSedonaLogo';
 import { useChatContext } from '@/contexts/ChatContext';
 import type { Message } from '@/contexts/ChatContext';
@@ -11,6 +11,10 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
   const [question, setQuestion] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dynamicWords = ['small molecule', 'protein', 'antibody', 'metabolite'];
+  const [wordIndex, setWordIndex] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const { 
     state: { voiceActive },
@@ -19,6 +23,55 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
     sendTextToVoice,
     startVoice
   } = useChatContext();
+
+  const getBaseTextForWord = (word: string) => {
+    if (!word) return "Let's design a ";
+    const first = word[0]?.toLowerCase();
+    const useAn = ['a', 'e', 'i', 'o', 'u'].includes(first);
+    return `Let's design ${useAn ? 'an ' : 'a '}`;
+  };
+
+  useEffect(() => {
+    // Don't animate while the user is actively typing something
+    if (question.trim().length > 0) return;
+
+    const currentWord = dynamicWords[wordIndex % dynamicWords.length];
+
+    let timeout = isDeleting ? 70 : 110;
+
+    // Pause with full word shown (cursor blinking) before deleting
+    if (!isDeleting && charIndex === currentWord.length) {
+      timeout = 2000; // ~2s pause
+    }
+
+    // Pause at the end of deletion (empty line + blinking caret)
+    if (isDeleting && charIndex === 0) {
+      timeout = 900;
+    }
+
+    const timer = setTimeout(() => {
+      if (!isDeleting) {
+        if (charIndex < currentWord.length) {
+          setCharIndex((prev) => prev + 1);
+        } else {
+          setIsDeleting(true);
+        }
+      } else {
+        if (charIndex > 0) {
+          setCharIndex((prev) => prev - 1);
+        } else {
+          setIsDeleting(false);
+          setWordIndex((prev) => (prev + 1) % dynamicWords.length);
+        }
+      }
+    }, timeout);
+
+    return () => clearTimeout(timer);
+  }, [charIndex, isDeleting, wordIndex, question, dynamicWords]);
+
+  const currentWord = dynamicWords[wordIndex % dynamicWords.length];
+  const baseText = getBaseTextForWord(currentWord);
+  const animatedPlaceholder = `${baseText}${currentWord.slice(0, charIndex)}`;
 
   const handleQuestionSubmit = async (question: string) => {
     openChat();
@@ -39,10 +92,11 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
       console.error('Failed to send to ElevenLabs agent');
       // Add error message
       const errorMessage: Message = {
-        id: Date.now().toString(),
+        id: `error-${Date.now()}`,
         type: 'assistant',
         content: 'Sorry, I encountered an error connecting to the voice agent. Please try again.',
-        timestamp: new Date()
+        timestamp: new Date(),
+        isFinal: true
       };
       addMessage(errorMessage);
     }
@@ -71,17 +125,25 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
       }`}>
         <form onSubmit={handleSubmit} className="flex items-center gap-4">
           <HoverRotatingSedonaLogo size={24} color="black" className="flex-shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            placeholder="Start designing a molecule"
-            className="flex-1 border-none outline-none text-gray-1500 placeholder-gray-1000 text-sm font-medium bg-transparent py-3 caret-gray-1500"
-          />
+          <div className="relative flex-1">
+            <input
+              ref={inputRef}
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder=""
+              className="w-full border-none outline-none text-gray-1500 placeholder-gray-1000 text-sm font-medium bg-transparent py-3 caret-gray-1500"
+            />
+            {question.trim().length === 0 && (
+              <div className="pointer-events-none absolute inset-0 flex items-center text-gray-1000 text-sm font-medium">
+                <span>{animatedPlaceholder}</span>
+                <span className="typing-caret" />
+              </div>
+            )}
+          </div>
           
           <button
             type="submit"

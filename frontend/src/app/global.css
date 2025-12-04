@@ -1756,7 +1756,26 @@
     display: none !important; /* or style as needed */
   }
   
-  /* After the dropdown appears (animation) */
-  .pac-container:after {
-    display: none !important; /* removes the "powered by Google" */
+/* After the dropdown appears (animation) */
+.pac-container:after {
+  display: none !important; /* removes the "powered by Google" */
+}
+
+/* Animated typing caret for AskBar placeholder */
+.typing-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  margin-left: 4px;
+  background-color: #2e2e2e;
+  animation: typingCaretBlink 0.7s steps(1, end) infinite;
+}
+
+@keyframes typingCaretBlink {
+  0%, 49% {
+    opacity: 1;
   }
+  50%, 100% {
+    opacity: 0;
+  }
+}

@@ -18,7 +18,7 @@ const FloatingNullStateComponent: React.FC<{ hideIcons?: boolean; timing?: Float
   const tickCount = 96;
   const innerRadius = 36; // ring inner radius (in SVG viewBox units)
   const outerRadius = 44; // ring outer radius
-  
+
   // Smooth wave parameters (deg-based)
   const WAVE_WIDTH_DEG = 15;         // ~8 ticks wide at 96 ticks for smooth gradient
   const WAVE_EXP = 2.5;              // gentler exponent => smoother bell curve
@@ -372,8 +372,11 @@ const FloatingNullStateComponent: React.FC<{ hideIcons?: boolean; timing?: Float
 
   // Memoize tick calculations to avoid recalculating on every render
   const tickElements = useMemo(() => {
-    const BASE_COLOR = '#6B7C78'; // Darker gray-blue for surrounding ticks
-    const PEAK_COLOR = '#3E2959'; // Purple for expanded tick
+    const BASE_COLOR = '#6B7C78';   // Darker gray-blue for surrounding ticks
+    // Biomarker purple on white brand color for spiking ticks
+    const PEAK_COLOR = '#8C6FC1';   // matches bg-biomarker-purple-on-white
+    // Global glow state: whenever any wave is active (push/hold/relax), glow the whole ring
+    const glowOn = activeWaves.some(wave => localPhaseFor(nowMs, wave.delayMs) > 0);
     
     return Array.from({ length: tickCount }).map((_, i) => {
       // Tick angle in degrees (0 = top)
@@ -387,7 +390,7 @@ const FloatingNullStateComponent: React.FC<{ hideIcons?: boolean; timing?: Float
       const extra = LENGTH_BOOST * strength; // length modulation
       const or = outerRadius + extra;
       const opacity = OPACITY_BASE + (OPACITY_PEAK - OPACITY_BASE) * strength;
-      // Interpolate color from base to peak based on strength
+      // Interpolate color from base to peak based on local wave strength
       const color = interpolateColor(BASE_COLOR, PEAK_COLOR, strength);
       // Gentle outward translation of the whole tick segment
       const translateUnits = TICK_TRANSLATE_UNITS * strength;
@@ -406,6 +409,8 @@ const FloatingNullStateComponent: React.FC<{ hideIcons?: boolean; timing?: Float
           strokeWidth="0.35"
           strokeLinecap="butt"
           opacity={opacity}
+          // Subtle biomarker-purple glow whenever the ring is in an expansion cycle
+          filter={glowOn ? 'url(#tick-glow)' : undefined}
         />
       );
     });
@@ -444,6 +449,22 @@ const FloatingNullStateComponent: React.FC<{ hideIcons?: boolean; timing?: Float
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: 'none' }}
         >
+          {/* Brand-aligned glow used for spiking ticks */}
+          <defs>
+            <filter id="tick-glow" x="-50%" y="-50%" width="200%" height="200%">
+              {/* Blur the tick strokes to get a soft mask */}
+              <feGaussianBlur in="SourceGraphic" stdDeviation="0.8" result="blur" />
+              {/* Color the blur with biomarker purple-on-white */}
+              <feFlood floodColor="#8C6FC1" floodOpacity="0.45" result="purple" />
+              <feComposite in="purple" in2="blur" operator="in" result="purpleGlow" />
+              <feMerge>
+                {/* Glow underneath */}
+                <feMergeNode in="purpleGlow" />
+                {/* Original ticks on top */}
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
           {tickElements}
           {DEBUG && (
             <g>

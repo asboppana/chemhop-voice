@@ -54,12 +54,12 @@ export const ChemistryMainPage: React.FC = () => {
   }, [hasConversation, isOpen, openChat]);
 
   return (
-    <div className="max-h-[90vh] bg-white flex flex-col items-center justify-center p-8">
+    <div className="h-full max-h-[90vh] bg-white flex flex-col items-center justify-center p-8">
       <div className="w-full max-w-4xl flex flex-col items-center">
         {/* Show animation only until conversation starts */}
         {shouldShowAnimation && (
           <div className="relative flex justify-center">
-            <div className="flex justify-center">
+            <div className="flex justify-center -translate-y-8">
               <FloatingNullState 
                 hideIcons={isSpeaking}
                 timing={

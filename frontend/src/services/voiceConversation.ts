@@ -18,6 +18,7 @@ export interface VoiceConversationCallbacks {
   onStatusChange?: (status: VoiceConnectionStatus) => void;
   onAgentStatusChange?: (status: VoiceAgentStatus) => void;
   onMessage?: (message: VoiceMessage) => void;
+  onChunk?: (chunk: string, source: 'user' | 'ai') => void; // Progressive text as voice speaks
   onError?: (error: string) => void;
   onVadScore?: (score: number) => void;
 }
@@ -209,17 +210,14 @@ class VoiceConversationService {
           });
           
           // ElevenLabs sends tentative agent responses through debug events
-          // type: 'tentative_agent_response' contains the streaming text
+          // type: 'tentative_agent_response' contains the streaming text AS IT'S BEING SPOKEN
           if (debugEvent.type === 'tentative_agent_response' && debugEvent.response) {
-            console.log('📝 Tentative response:', {
+            console.log('📝 AI speaking chunk:', {
               preview: debugEvent.response.substring(0, 50),
               length: debugEvent.response.length
             });
-            this.callbacks.onMessage?.({
-              message: debugEvent.response,
-              source: 'ai',
-              isFinal: false // Mark as tentative
-            });
+            // This is text as it's being spoken - use onChunk to sync with voice
+            this.callbacks.onChunk?.(debugEvent.response, 'ai');
           }
         },
         

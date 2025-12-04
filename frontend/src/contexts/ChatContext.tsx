@@ -9,13 +9,16 @@ export interface Message {
   content: string;
   timestamp: Date;
   isVoice?: boolean; // Flag to indicate if message came from voice
+  isFinal: boolean; // Whether this message is complete
 }
 
 export type ChatAttachmentMode = 'attached' | 'detached';
 export type ChatInputMode = 'text' | 'voice' | 'both';
 
 interface ChatState {
-  messages: Message[];
+  messages: Message[]; // Only FINAL messages
+  streamingMessage: Message | null; // Current message being streamed
+  streamingChunks: string[]; // Progressive chunks for display sync with voice
   isOpen: boolean;
   isLoading: boolean;
   mode: ChatAttachmentMode;
@@ -36,6 +39,11 @@ type ChatAction =
   | { type: 'ADD_MESSAGE'; message: Message }
   | { type: 'SET_MESSAGES'; messages: Message[] }
   | { type: 'CLEAR_MESSAGES' }
+  | { type: 'START_STREAMING_MESSAGE'; message: Message }
+  | { type: 'ADD_STREAMING_CHUNK'; chunk: string }
+  | { type: 'UPDATE_STREAMING_CONTENT'; content: string }
+  | { type: 'FINALIZE_STREAMING_MESSAGE'; finalContent?: string }
+  | { type: 'INTERRUPT_STREAMING_MESSAGE' }
   | { type: 'SET_VOICE_ACTIVE'; active: boolean }
   | { type: 'SET_VOICE_CONNECTION_STATUS'; status: VoiceConnectionStatus }
   | { type: 'SET_VOICE_AGENT_STATUS'; status: VoiceAgentStatus }
@@ -54,6 +62,8 @@ const getInitialMode = (): ChatAttachmentMode => {
 
 const initialState: ChatState = {
   messages: [],
+  streamingMessage: null,
+  streamingChunks: [],
   isOpen: false,
   isLoading: false,
   mode: getInitialMode(),
@@ -119,7 +129,61 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'CLEAR_MESSAGES':
       return {
         ...state,
-        messages: []
+        messages: [],
+        streamingMessage: null,
+        streamingChunks: []
+      };
+    
+    case 'START_STREAMING_MESSAGE':
+      return {
+        ...state,
+        streamingMessage: action.message,
+        streamingChunks: []
+      };
+    
+    case 'ADD_STREAMING_CHUNK':
+      return {
+        ...state,
+        streamingChunks: [...state.streamingChunks, action.chunk]
+      };
+    
+    case 'UPDATE_STREAMING_CONTENT':
+      if (!state.streamingMessage) return state;
+      return {
+        ...state,
+        streamingMessage: {
+          ...state.streamingMessage,
+          content: action.content
+        }
+      };
+    
+    case 'FINALIZE_STREAMING_MESSAGE':
+      if (!state.streamingMessage) return state;
+      const finalMessage: Message = {
+        ...state.streamingMessage,
+        content: action.finalContent || state.streamingMessage.content,
+        isFinal: true
+      };
+      return {
+        ...state,
+        messages: [...state.messages, finalMessage],
+        streamingMessage: null,
+        streamingChunks: []
+      };
+    
+    case 'INTERRUPT_STREAMING_MESSAGE':
+      if (!state.streamingMessage) return state;
+      // Save interrupted message with whatever content was visible
+      const interruptedMessage: Message = {
+        ...state.streamingMessage,
+        content: state.streamingChunks.join(' ') || state.streamingMessage.content,
+        isFinal: true
+      };
+      return {
+        ...state,
+        messages: [...state.messages, interruptedMessage],
+        streamingMessage: null,
+        streamingChunks: []
       };
     
     case 'SET_VOICE_ACTIVE':
@@ -200,11 +264,18 @@ interface ChatProviderProps {
   children: ReactNode;
 }
 
+// Message ID generator with monotonic counter
+let messageIdCounter = 0;
+const generateMessageId = (): string => {
+  return `msg-${Date.now()}-${messageIdCounter++}`;
+};
+
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const voiceInitializedRef = useRef(false);
-  const currentUserMessageRef = useRef<{ id: string; content: string } | null>(null);
-  const currentAssistantMessageRef = useRef<{ id: string; content: string } | null>(null);
+  const currentUserMessageIdRef = useRef<string | null>(null);
+  const currentAssistantMessageIdRef = useRef<string | null>(null);
+  const currentAssistantFullTextRef = useRef<string>(''); // Store full AI text for interruptions
   const messagesRef = useRef<Message[]>(state.messages);
   const chatAutoOpenedForVoiceRef = useRef(false);
   const voiceActiveRef = useRef(state.voiceActive);
@@ -310,11 +381,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       onAgentStatusChange: (status) => {
         dispatch({ type: 'SET_VOICE_AGENT_STATUS', status });
       },
+      onChunk: (chunk, source) => {
+        console.log('📝 Chunk received:', { chunk: chunk.substring(0, 30), source });
+        // Add chunk to streaming display
+        dispatch({ type: 'ADD_STREAMING_CHUNK', chunk });
+      },
       onMessage: (voiceMessage) => {
-        console.log('Voice message received:', voiceMessage);
+        console.log('📨 Voice message received:', voiceMessage);
         
         // Auto-open chat ONLY on user's first message, NOT on system greeting
-        // This ensures chat opens when user speaks, not when agent greets
         if (!chatAutoOpenedForVoiceRef.current && 
             voiceMessage.message.trim() && 
             voiceMessage.source === 'user') {
@@ -322,103 +397,100 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           chatAutoOpenedForVoiceRef.current = true;
         }
         
-        // Handle user transcripts
-        // NOTE: When text is sent via sendUserMessage, ElevenLabs does NOT echo it back
-        // This callback only fires for actual voice input transcriptions
+        // ============================================================
+        // HANDLE USER TRANSCRIPTS (Voice Input)
+        // ============================================================
         if (voiceMessage.source === 'user') {
-          console.log('User transcript received:', voiceMessage);
+          console.log('🎤 User transcript:', { isFinal: voiceMessage.isFinal, content: voiceMessage.message });
           
-          if (!currentUserMessageRef.current || voiceMessage.isFinal) {
-            // Create new user message or finalize existing one
-            const messageId = currentUserMessageRef.current?.id || Date.now().toString();
-            const message: Message = {
-              id: messageId,
-              type: 'user',
-              content: voiceMessage.message,
-              timestamp: new Date(),
-              isVoice: true // This is truly from voice
-            };
-            
-            if (currentUserMessageRef.current) {
-              // Update existing message
-              dispatch({ 
-                type: 'SET_MESSAGES', 
-                messages: messagesRef.current.map(m => 
-                  m.id === messageId ? message : m
-                )
-              });
-              if (voiceMessage.isFinal) {
-                currentUserMessageRef.current = null;
-              }
-            } else {
-              // Add new message
-              dispatch({ type: 'ADD_MESSAGE', message });
-              if (!voiceMessage.isFinal) {
-                currentUserMessageRef.current = { id: messageId, content: voiceMessage.message };
-              }
-            }
-          } else {
-            // Update in-progress user message
-            currentUserMessageRef.current.content = voiceMessage.message;
+          // User interrupted AI - finalize AI's message first
+          if (currentAssistantMessageIdRef.current) {
+            console.log('🚨 User interrupting AI, finalizing AI message');
+            dispatch({ type: 'INTERRUPT_STREAMING_MESSAGE' });
+            currentAssistantMessageIdRef.current = null;
+            currentAssistantFullTextRef.current = '';
+          }
+          
+          if (voiceMessage.isFinal) {
+            // User finished speaking - finalize message
+            console.log('✅ User transcript FINAL');
             dispatch({ 
-              type: 'SET_MESSAGES', 
-              messages: messagesRef.current.map(m => 
-                m.id === currentUserMessageRef.current!.id 
-                  ? { ...m, content: voiceMessage.message }
-                  : m
-              )
+              type: 'FINALIZE_STREAMING_MESSAGE',
+              finalContent: voiceMessage.message 
             });
+            currentUserMessageIdRef.current = null;
+          } else {
+            // User still speaking - stream the transcript
+            if (!currentUserMessageIdRef.current) {
+              // Start new user message
+              const messageId = generateMessageId();
+              currentUserMessageIdRef.current = messageId;
+              dispatch({ 
+                type: 'START_STREAMING_MESSAGE',
+                message: {
+                  id: messageId,
+                  type: 'user',
+                  content: voiceMessage.message,
+                  timestamp: new Date(),
+                  isVoice: true,
+                  isFinal: false
+                }
+              });
+            } else {
+              // Update streaming user message content
+              dispatch({ 
+                type: 'UPDATE_STREAMING_CONTENT',
+                content: voiceMessage.message 
+              });
+            }
           }
         }
         
-        // Handle AI responses
+        // ============================================================
+        // HANDLE AI RESPONSES (Full text arrives immediately)
+        // ============================================================
         if (voiceMessage.source === 'ai') {
-          console.log('AI response received:', {
+          console.log('🤖 AI response:', {
             isFinal: voiceMessage.isFinal,
             messageLength: voiceMessage.message.length,
             preview: voiceMessage.message.substring(0, 50)
           });
           
-          if (!currentAssistantMessageRef.current || voiceMessage.isFinal) {
-            // Create new assistant message or finalize existing one
-            const messageId = currentAssistantMessageRef.current?.id || (Date.now() + 1).toString();
-            const message: Message = {
-              id: messageId,
-              type: 'assistant',
-              content: voiceMessage.message,
-              timestamp: new Date(),
-              isVoice: true
-            };
-            
-            if (currentAssistantMessageRef.current) {
-              // Update existing message
-              dispatch({ 
-                type: 'SET_MESSAGES', 
-                messages: messagesRef.current.map(m => 
-                  m.id === messageId ? message : m
-                )
-              });
-              if (voiceMessage.isFinal) {
-                currentAssistantMessageRef.current = null;
-              }
-            } else {
-              // Add new message
-              dispatch({ type: 'ADD_MESSAGE', message });
-              if (!voiceMessage.isFinal) {
-                currentAssistantMessageRef.current = { id: messageId, content: voiceMessage.message };
-              }
-            }
-          } else {
-            // Update in-progress assistant message
-            currentAssistantMessageRef.current.content = voiceMessage.message;
+          if (voiceMessage.isFinal) {
+            // Final AI message - finalize streaming
+            console.log('✅ AI response FINAL');
             dispatch({ 
-              type: 'SET_MESSAGES', 
-              messages: messagesRef.current.map(m => 
-                m.id === currentAssistantMessageRef.current!.id 
-                  ? { ...m, content: voiceMessage.message }
-                  : m
-              )
+              type: 'FINALIZE_STREAMING_MESSAGE',
+              finalContent: voiceMessage.message 
             });
+            currentAssistantMessageIdRef.current = null;
+            currentAssistantFullTextRef.current = '';
+          } else {
+            // New AI response starting - store FULL text for reference
+            if (!currentAssistantMessageIdRef.current) {
+              const messageId = generateMessageId();
+              currentAssistantMessageIdRef.current = messageId;
+              currentAssistantFullTextRef.current = voiceMessage.message;
+              
+              dispatch({ 
+                type: 'START_STREAMING_MESSAGE',
+                message: {
+                  id: messageId,
+                  type: 'assistant',
+                  content: voiceMessage.message, // Full text stored
+                  timestamp: new Date(),
+                  isVoice: true,
+                  isFinal: false
+                }
+              });
+            } else {
+              // Update full text (in case it changes during streaming)
+              currentAssistantFullTextRef.current = voiceMessage.message;
+              dispatch({ 
+                type: 'UPDATE_STREAMING_CONTENT',
+                content: voiceMessage.message 
+              });
+            }
           }
         }
       },
@@ -427,10 +499,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         dispatch({ type: 'SET_VOICE_ACTIVE', active: false });
         // Optionally add error message to chat
         const errorMessage: Message = {
-          id: Date.now().toString(),
+          id: generateMessageId(),
           type: 'assistant',
           content: `Voice error: ${error}`,
-          timestamp: new Date()
+          timestamp: new Date(),
+          isFinal: true
         };
         dispatch({ type: 'ADD_MESSAGE', message: errorMessage });
       }
@@ -449,8 +522,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     await voiceConversationService.stopConversation();
     dispatch({ type: 'SET_VOICE_ACTIVE', active: false });
     dispatch({ type: 'SET_INPUT_MODE', mode: 'text' });
-    currentUserMessageRef.current = null;
-    currentAssistantMessageRef.current = null;
+    currentUserMessageIdRef.current = null;
+    currentAssistantMessageIdRef.current = null;
+    currentAssistantFullTextRef.current = '';
   }, []);
   
   const toggleVoice = useCallback(async (): Promise<void> => {
@@ -471,13 +545,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       return false;
     }
     
+    // Interrupt any streaming AI message if user types while AI is responding
+    if (currentAssistantMessageIdRef.current) {
+      console.log('🚨 User typing interrupted AI, finalizing AI message');
+      dispatch({ type: 'INTERRUPT_STREAMING_MESSAGE' });
+      currentAssistantMessageIdRef.current = null;
+      currentAssistantFullTextRef.current = '';
+    }
+    
     // Add user message immediately (marked as text, not voice)
+    // Typed messages are always final (not streamed)
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: generateMessageId(),
       type: 'user',
       content: text,
       timestamp: new Date(),
-      isVoice: false // Typed message, not spoken
+      isVoice: false, // Typed message, not spoken
+      isFinal: true // Typed messages are always complete
     };
     dispatch({ type: 'ADD_MESSAGE', message: userMessage });
     

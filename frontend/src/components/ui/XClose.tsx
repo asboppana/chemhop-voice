@@ -31,7 +31,7 @@ export const XClose: React.FC<XCloseProps> = ({
   size = 'md',
   invertIcon = true,
   renderAs = 'button',
-  borderColor = 'border-gray-500',
+  borderColor = 'border-gray-1500',
 }) => {
   if (renderAs === 'icon') {
     return (
