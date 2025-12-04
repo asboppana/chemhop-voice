@@ -538,7 +538,7 @@ class MoleculeController:
         
         # Initialize LM Studio client (OpenAI-compatible API)
         # LM Studio runs locally on port 1234 by default
-        lm_studio_url = os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
+        lm_studio_url = "https://fde5474ce775.ngrok.app/v1"
         client = OpenAI(
             base_url=lm_studio_url,
             api_key="lm-studio"  # LM Studio doesn't require a real API key

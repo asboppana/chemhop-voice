@@ -516,7 +516,7 @@ async def predict_admet(
     
     try:
         # Call the ADMET service
-        admet_service_url = os.getenv("ADMET_SERVICE_URL", "http://localhost:8001")
+        admet_service_url = os.getenv("ADMET_SERVICE_URL", "http://localhost:8002")
         
         # Try to call the MCP tool endpoint
         response = requests.post(

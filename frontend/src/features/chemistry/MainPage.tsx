@@ -419,9 +419,9 @@ export const ChemistryMainPage: React.FC = () => {
         setLoadingAdmet(true);
         try {
           console.log('Calling ADMET prediction...');
-          const admetResponse = await predictADMET(replaceResponse.result_smiles);
-          console.log('ADMET Response:', admetResponse);
-          setAdmetPredictions(admetResponse);
+        //   const admetResponse = await predictADMET(replaceResponse.result_smiles);
+        //   console.log('ADMET Response:', admetResponse);
+        //   setAdmetPredictions(admetResponse);
         } catch (admetErr: any) {
           console.error('Error getting ADMET predictions:', admetErr);
           // Don't set error - ADMET is optional, molecule generation succeeded
