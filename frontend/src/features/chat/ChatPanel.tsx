@@ -44,6 +44,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     height: window.innerHeight - CHAT_CONFIG.FLOATING_TOP_OFFSET - CHAT_CONFIG.FLOATING_BOTTOM_OFFSET
   });
   
+  // Track if current input came from voice transcription
+  // NOTE: When voice transcription updates inputValue, call setIsVoiceInput(true)
+  // to enforce minimum word count validation. Hand-typed messages bypass this check.
+  const [isVoiceInput, setIsVoiceInput] = useState(false);
+  const [voiceInputError, setVoiceInputError] = useState('');
+  
   // Progressive loading states
   const [loadingMessage, setLoadingMessage] = useState('Thinking...');
   
@@ -136,8 +142,21 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
     
+    // For voice input, enforce minimum word count (5 words)
+    // Hand-typed messages are always allowed regardless of length
+    if (isVoiceInput) {
+      const wordCount = inputValue.trim().split(/\s+/).length;
+      if (wordCount < 5) {
+        setVoiceInputError('Voice messages must be at least 5 words. Please speak more or type your message.');
+        return;
+      }
+    }
+    
+    // Clear any errors and send message
+    setVoiceInputError('');
     sendMessage(inputValue);
     setInputValue('');
+    setIsVoiceInput(false); // Reset voice input flag
   };
 
   const renderMessages = () => {
@@ -214,6 +233,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const renderInput = () => (
     <div className="bg-[#1C1C1C] p-4">
+      {/* Voice input error message */}
+      {voiceInputError && (
+        <div className="mb-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
+          {voiceInputError}
+        </div>
+      )}
+      
       {/* Voice status indicator with stop button */}
       {voiceActive && (
         <div className="mb-2 flex items-center justify-between text-xs text-gray-750">
@@ -265,7 +291,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         <input
           type="text"
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            // Mark as typed input (not voice) when user manually types
+            setIsVoiceInput(false);
+            // Clear any voice input errors when user starts typing
+            if (voiceInputError) setVoiceInputError('');
+          }}
           placeholder={voiceActive ? "Type or speak your message..." : "Type your message..."}
           className="flex-1 px-3 py-2 bg-[#1B1B1B] text-white placeholder-gray-750 rounded-full border border-gray-1500 text-sm focus:outline-none focus:border-gray-1000"
           disabled={isLoading}

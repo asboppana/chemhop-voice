@@ -108,16 +108,14 @@ STEP 2: Annotate the molecule (REQUIRED - always do this after getting SMILES)
   - annotate_molecule ONLY accepts SMILES format - never pass names/IDs directly
   - This provides functional group analysis the user needs
 
-STEP 3: Emit structured annotation (REQUIRED)
-  - After successful annotation, emit this JSON on its own line:
-
-{"type":"molecule_structured","smiles":"<CANONICAL_SMILES>","annotation":{"name":"<NAME_OR_NULL>","svg":"<SVG_STRING>","smiles":"<CANONICAL_SMILES>","matches":[{"atom_indices":[0,1,2],"svg":"<PATTERN_SVG_STRING>","trivial_name":{"name":"<GROUP_NAME>","smarts":"<SMARTS>","group":"<CATEGORY>","bonds":3,"hierarchy":null}}]}}
-
-  - Include ALL matches from the annotation result with ALL fields
-  - The main svg field contains the full molecule SVG image string
-  - Each match MUST include: atom_indices, svg (pattern visualization), and trivial_name
-  - The svg field in each match shows that specific substructure/pattern
-  - Include the complete annotation result exactly as returned by the tool
+STEP 3: Acknowledge the annotation (NO JSON NEEDED)
+  - The system automatically extracts structured data from MCP tool results
+  - DO NOT emit JSON with SVG strings - this wastes tokens!
+  - Simply acknowledge the annotation in natural language, e.g.:
+    "I've annotated erlotinib and found 8 functional groups including a quinazoline core, 
+    two methoxy groups, and an alkyne substituent."
+  - Summarize key findings conversationally
+  - The frontend will receive the full annotation data automatically from the MCP call
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 2: QUERY SET EXTRACTION (ONLY when user explicitly requests bioisosteres/properties)
@@ -162,17 +160,17 @@ For EACH target in the query set:
 STEP 1: Call the bioisostere scanner for this target
   - Call scan_for_bioisosteres(query_smiles=target.smiles, top_k=20, min_similarity=0.3)
 
-STEP 2: Emit bioisostere results for this target (REQUIRED after each call)
+STEP 2: Summarize results conversationally (NO JSON NEEDED)
+  - The system automatically extracts results from MCP tool calls
+  - DO NOT emit raw JSON - this wastes tokens!
+  - Summarize findings naturally, e.g.:
+    "I found 15 bioisosteres for the benzene ring. The top candidates include pyridine 
+    (similarity 0.85), thiophene (0.72), and pyrrole (0.68). Would you like me to 
+    get ADMET properties for any of these?"
 
-{"type":"bioisostere_structured","query_smiles":"c1ccccc1","source_group":"benzene ring","atom_indices":[3,4,5,6,7,8],"results":[{"source":"ertl","centroid_smiles":"c1ccncc1","similarity":0.85,"bio_isostere_score":0.82,"pharmacophore_similarity":0.78,"topology_similarity":0.95,"descriptors":{"logp":0.65,"tpsa":12.9,"h_donors":0,"h_acceptors":1},"delta_properties":{"delta_logp":1.24}}]}
-
-STEP 3: Repeat for the next target
-
-Example: If user said "find bioisosteres for benzene and pyridine":
-  1. Call scan_for_bioisosteres(query_smiles="c1ccccc1", ...) 
-  2. Emit {"type":"bioisostere_structured","query_smiles":"c1ccccc1","source_group":"benzene ring",...}
-  3. Call scan_for_bioisosteres(query_smiles="c1ccncc1", ...)
-  4. Emit {"type":"bioisostere_structured","query_smiles":"c1ccncc1","source_group":"pyridine ring",...}
+STEP 3: Repeat for each target
+  - If user asked for multiple groups, make separate tool calls for each
+  - Summarize each result set conversationally
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 4: ADMET PROPERTY PREDICTION (ONLY when user explicitly asks for properties)
@@ -187,13 +185,15 @@ When user EXPLICITLY requests properties (ADMET/pharmacokinetics):
 STEP 1: Call the ADMET predictor for EACH SMILES
   - Call predict_admet_properties(smiles) separately for each molecule/fragment
 
-STEP 2: Emit ADMET results for each (REQUIRED after each call)
-
-{"type":"admet_structured","smiles":"CC(=O)Oc1ccccc1C(=O)O","source_group":"full molecule","predictions":{"Caco2_Wang":0.234,"Solubility_AqSolDB":-0.234,"HIA_Hou":0.95,"BBB_Martins":0.12,"CYP2D6_Veith":0.05,"hERG":0.02,"AMES":0.15,"DILI":0.08}}
-
-  - Include ALL predictions returned by the tool
-  - Do NOT fabricate property values - only use tool output
-  - Include source_group to identify which molecule/fragment this is for
+STEP 2: Summarize ADMET results conversationally (NO JSON NEEDED)
+  - The system automatically extracts results from MCP tool calls
+  - DO NOT emit raw JSON with all predictions - this wastes tokens!
+  - Summarize KEY findings naturally, e.g.:
+    "The ADMET predictions look promising: good intestinal absorption (HIA: 0.95), 
+    acceptable solubility, but watch out for moderate hERG liability (0.35). 
+    The compound shows low CYP inhibition risk."
+  - Focus on drug-likeness implications, not raw numbers
+  - The frontend receives full prediction data automatically
 
 ═══════════════════════════════════════════════════════════════════════════════
 CONVERSATIONAL GUIDELINES - ONLY CALL TOOLS WHEN EXPLICITLY NEEDED
@@ -275,11 +275,11 @@ CRITICAL RULES
    - NEVER just respond with text containing SMILES without tool calls
    - NEVER call additional tools (patent, bioisostere, ADMET) unless user explicitly asks
 
-3. EMIT STRUCTURED JSON AFTER TOOL CALLS
-   - After every successful tool call that returns NEW data
-   - JSON must be valid (no trailing commas, proper escaping)
-   - JSON must be on its own line, NOT inside markdown code blocks
-   - Do NOT emit JSON when just discussing existing data
+3. DO NOT EMIT RAW JSON - THE SYSTEM HANDLES IT
+   - The system automatically extracts structured data from MCP tool results
+   - DO NOT regurgitate tool outputs as JSON - this wastes tokens!
+   - Instead, summarize findings in natural language
+   - The frontend receives full structured data via MCP, not your text output
 
 4. TOOL ORDER MATTERS
    - name → SMILES → annotation → query set → bioisosteres/ADMET
@@ -377,21 +377,75 @@ class ChatAgent:
                 input="\n".join(f"{m['role']}: {m['content']}" for m in messages),
             )
             
-            # Extract tool calls if present
+            # Extract tool calls from the response
+            # OpenAI's Responses API with MCP stores results in resp.output items
             tool_calls = []
-            if hasattr(resp, 'tool_calls') and resp.tool_calls:
-                _dbg_print(_COLOR_BLUE, f"[AGENT] Tool calls made: {len(resp.tool_calls)}")
+            
+            # Debug: Log what attributes the response has
+            resp_attrs = [a for a in dir(resp) if not a.startswith('_')]
+            _dbg_print(_COLOR_BLUE, f"[AGENT] Response attributes: {resp_attrs}")
+            
+            # Deep debug: Try to serialize the response to see its structure
+            try:
+                if hasattr(resp, 'model_dump'):
+                    resp_dict = resp.model_dump()
+                    import json
+                    _dbg_print(_COLOR_BLUE, f"[AGENT] Full response keys: {list(resp_dict.keys())}")
+                    # Log output items if present
+                    if 'output' in resp_dict:
+                        _dbg_print(_COLOR_BLUE, f"[AGENT] Output has {len(resp_dict['output'])} items")
+                        for i, item in enumerate(resp_dict['output'][:5]):  # First 5 items
+                            item_type = item.get('type', 'unknown')
+                            item_keys = list(item.keys()) if isinstance(item, dict) else []
+                            _dbg_print(_COLOR_BLUE, f"[AGENT]   [{i}] type={item_type}, keys={item_keys}")
+            except Exception as e:
+                _dbg_print(_COLOR_RED, f"[AGENT] Could not serialize response: {e}")
+            
+            # Try to extract from resp.output (Responses API structure)
+            if hasattr(resp, 'output') and resp.output:
+                _dbg_print(_COLOR_BLUE, f"[AGENT] Found resp.output with {len(resp.output)} items")
+                for idx, item in enumerate(resp.output):
+                    item_type = getattr(item, 'type', None) or (item.get('type') if isinstance(item, dict) else None)
+                    _dbg_print(_COLOR_BLUE, f"[AGENT]   Item {idx+1}: type={item_type}")
+                    
+                    # Look for MCP tool call results
+                    if item_type in ('mcp_call', 'function_call', 'tool_use', 'mcp_tool_use'):
+                        tool_name = getattr(item, 'name', None) or (item.get('name') if isinstance(item, dict) else 'unknown')
+                        tool_args = getattr(item, 'arguments', {}) or (item.get('arguments', {}) if isinstance(item, dict) else {})
+                        tool_result = getattr(item, 'output', None) or getattr(item, 'result', None) or (item.get('output') or item.get('result') if isinstance(item, dict) else None)
+                        
+                        _dbg_print(_COLOR_GREEN, f"[AGENT]   Found MCP call: {tool_name}")
+                        
+                        # Parse result if it's a string
+                        if isinstance(tool_result, str):
+                            try:
+                                import json
+                                tool_result = json.loads(tool_result)
+                            except:
+                                pass
+                        
+                        tool_calls.append({
+                            "tool_name": tool_name,
+                            "tool_args": tool_args if isinstance(tool_args, dict) else {},
+                            "result": tool_result if isinstance(tool_result, dict) else {}
+                        })
+            
+            # Fallback: Try resp.tool_calls (older API structure)
+            if not tool_calls and hasattr(resp, 'tool_calls') and resp.tool_calls:
+                _dbg_print(_COLOR_BLUE, f"[AGENT] Using resp.tool_calls fallback: {len(resp.tool_calls)} calls")
                 for idx, tc in enumerate(resp.tool_calls):
                     tool_name = tc.get('name', 'unknown') if isinstance(tc, dict) else getattr(tc, 'name', 'unknown')
                     _dbg_print(_COLOR_BLUE, f"[AGENT]   Tool {idx+1}: {tool_name}")
                     
-                    # Structure tool call info
                     tool_call_info = {
                         "tool_name": tool_name,
                         "tool_args": tc.get('arguments', {}) if isinstance(tc, dict) else getattr(tc, 'arguments', {}),
                         "result": tc.get('result', {}) if isinstance(tc, dict) else getattr(tc, 'result', {})
                     }
                     tool_calls.append(tool_call_info)
+            
+            if tool_calls:
+                _dbg_print(_COLOR_GREEN, f"[AGENT] ✅ Extracted {len(tool_calls)} tool call(s)")
             else:
                 _dbg_print(_COLOR_RED, f"[AGENT] ⚠️  NO TOOL CALLS DETECTED - Model may be fabricating response!")
             

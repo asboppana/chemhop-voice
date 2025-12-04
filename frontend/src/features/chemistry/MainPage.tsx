@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
-<<<<<<< HEAD
-import { analyzeMolecule, highlightMolecule, scanBioisosteres, generateSvg } from '@/services/moleculeService';
-import type { MoleculeAnalysisResponse, BioisostereScanResponse } from '@/services/moleculeService';
 import { useStructuredData, setMoleculeContext, clearMoleculeContext } from '@/hooks/useStructuredData';
 import type { ParsedChatResponse } from '@/utils/chatResponseHandler';
 import { FloatingNullState } from '@/components/animations/FloatingNullState';
-=======
 import { analyzeMolecule, highlightMolecule, scanBioisosteres, generateSvg, llmReplaceSubstructure, predictADMET } from '@/services/moleculeService';
 import type { MoleculeAnalysisResponse, BioisostereScanResponse, ADMETPredictionResponse } from '@/services/moleculeService';
->>>>>>> d415bce01e434ad72dac50a01625b2405d04be23
 
 // Helper function to convert index to letter (0 -> A, 1 -> B, etc.)
 const indexToLetter = (index: number): string => {
