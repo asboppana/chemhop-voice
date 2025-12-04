@@ -1,0 +1,2 @@
+"""ADMET AI service module."""
+

@@ -14,6 +14,11 @@ importers:
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.7)(react@19.2.0)
+<<<<<<< HEAD
+      '@supabase/supabase-js':
+        specifier: ^2.86.0
+        version: 2.86.0
+=======
       '@radix-ui/react-toast':
         specifier: ^1.2.15
         version: 1.2.15(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -23,6 +28,7 @@ importers:
       '@t3-oss/env-core':
         specifier: ^0.13.8
         version: 0.13.8(typescript@5.9.3)(zod@4.1.13)
+>>>>>>> 0cbe06e6d056531f761e3c5739cd5a4c92af1040
       axios:
         specifier: ^1.13.2
         version: 1.13.2
@@ -955,6 +961,8 @@ packages:
     resolution: {integrity: sha512-BaC9sv5+HGNy1ulZwY8/Ev7EjfYYmWD4fOMw9bDBqTawEj6JHAiOHeTwXLRzVaeSay4p17xYLN2NSCoGgXMQnw==}
     engines: {node: '>=20.0.0'}
 
+<<<<<<< HEAD
+=======
   '@t3-oss/env-core@0.13.8':
     resolution: {integrity: sha512-L1inmpzLQyYu4+Q1DyrXsGJYCXbtXjC4cICw1uAKv0ppYPQv656lhZPU91Qd1VS6SO/bou1/q5ufVzBGbNsUpw==}
     peerDependencies:
@@ -977,6 +985,7 @@ packages:
     peerDependencies:
       tailwindcss: '>=3.2.0'
 
+>>>>>>> 0cbe06e6d056531f761e3c5739cd5a4c92af1040
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -2870,6 +2879,8 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+<<<<<<< HEAD
+=======
   '@t3-oss/env-core@0.13.8(typescript@5.9.3)(zod@4.1.13)':
     optionalDependencies:
       typescript: 5.9.3
@@ -2879,6 +2890,7 @@ snapshots:
     dependencies:
       tailwindcss: 3.4.18(tsx@4.21.0)
 
+>>>>>>> 0cbe06e6d056531f761e3c5739cd5a4c92af1040
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.28.5

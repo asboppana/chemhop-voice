@@ -1,0 +1,41 @@
+{
+    "out_dir": "/Users/asboppana/Desktop/local_code/chemhop-voice/backend/src/services/mcp/ring_scan/db/clusters",
+    "threshold": 0.4,
+    "overwrite": false,
+    "branching_factor": 254,
+    "refine_threshold_change": 0.0,
+    "save_tree": false,
+    "save_centroids": true,
+    "merge_criterion": "diameter",
+    "refine_merge_criterion": "tolerance-diameter",
+    "tolerance": 0.05,
+    "refine_num": 0,
+    "refine_rounds": 0,
+    "recluster_rounds": 0,
+    "recluster_shuffle": true,
+    "n_features": null,
+    "input_is_packed": true,
+    "monitor_rss": true,
+    "monitor_rss_interval_s": 1.0,
+    "max_fps": null,
+    "variant": "lean",
+    "copy_inputs": false,
+    "verbose": true,
+    "input_files": [
+        "/Users/asboppana/Desktop/local_code/chemhop-voice/backend/src/services/mcp/ring_scan/db/rings.npy"
+    ],
+    "num_fps_present": [
+        3931782
+    ],
+    "num_fps_loaded": [
+        3931782
+    ],
+    "cpp_extensions_enabled": true,
+    "cpp_extensions_installed": true,
+    "total_memory_gib": 16.0,
+    "initial_available_memory_gib": 2.3886566162109375,
+    "platform": "darwin",
+    "cpu": "Apple M2 Pro",
+    "numpy_version": "2.3.5",
+    "python_version": "3.11.14"
+}
