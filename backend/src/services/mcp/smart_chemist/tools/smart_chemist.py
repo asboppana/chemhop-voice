@@ -195,9 +195,19 @@ class SmartChemist:
             if mol.HasSubstructMatch(pattern, useChirality=True):
                 hit_atom_indices_list = mol.GetSubstructMatches(pattern, useChirality=True)
                 for hit_atom_indices in hit_atom_indices_list:
+                    # convert the pattern to a molecule
+                    pattern_mol = Chem.MolFromSmarts(db_row.smarts)
+                    
+                    if pattern_mol is not None:
+                        AllChem.Compute2DCoords(pattern_mol)
+                        pattern_svg = self._mol_to_image_str(pattern_mol, 400, 400)
+                    else:
+                        pattern_svg = None
+                        
                     matches.append(
                         {
                             "atom_indices": hit_atom_indices,
+                            "svg": pattern_svg,
                             "trivial_name": {
                                 "name": db_row.trivial_name,
                                 "smarts": db_row.smarts,

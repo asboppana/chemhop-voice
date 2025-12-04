@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+import requests
+from fastmcp import types
 from fastmcp import FastMCP
 
 # Add the backend directory to sys.path for imports
@@ -23,7 +25,6 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 # Import our tools
-from src.services.mcp.smart_chemist.tools.smart_chemist import (
 from src.services.mcp.smart_chemist.tools.smart_chemist import (  # noqa: E402
     SmartChemist,
     convert_string_input_to_smiles,
@@ -113,6 +114,27 @@ def annotate_molecule(smiles: str) -> Dict[str, Any]:
             "error": str(e),
             "smiles": smiles
         }
+
+@mcp.tool()
+def get_smiles_from_name(chemical_name: str) -> Dict[str, Any]:
+    """Get SMILES string from name"""
+    
+    get_smile_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{chemical_name}/property/CanonicalSMILES/JSON"
+    response = requests.get(get_smile_url)
+    response_json = response.json()
+    canonical_smiles = response_json["PropertyTable"]["Properties"][0].get("CanonicalSMILES", None)
+    
+    if canonical_smiles is None:
+        canonical_smiles = response_json["PropertyTable"]["Properties"][0].get("ConnectivitySMILES", None)
+    
+    if canonical_smiles is None:
+        return {
+            "error": f"No SMILES found for {chemical_name}",
+        }
+    
+    return {
+        "smiles": canonical_smiles
+    }
 
 
 @mcp.tool()
