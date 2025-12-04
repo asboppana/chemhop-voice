@@ -5,6 +5,7 @@ Provides functionality for analyzing molecules using SMILES strings
 and returning annotated chemical structure information.
 """
 from fastapi import APIRouter, Depends, status, HTTPException
+from pydantic import BaseModel, Field
 
 from src.api.models import ErrorResponse
 from src.api.models.molecule import (
@@ -20,7 +21,9 @@ from src.api.models.molecule import (
     GenerateSvgRequest,
     GenerateSvgResponse,
     ReplaceSubstructureRequest,
-    ReplaceSubstructureResponse
+    ReplaceSubstructureResponse,
+    LLMReplaceSubstructureRequest,
+    LLMReplaceSubstructureResponse
 )
 from src.controllers.molecule_controller import MoleculeController
 from src.controllers.bioisostere_controller import BioisostereController
@@ -387,4 +390,179 @@ async def replace_substructure(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error replacing substructure: {str(e)}"
+        )
+
+
+@router.post(
+    "/molecule/llm-replace-substructure",
+    response_model=LLMReplaceSubstructureResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "model": LLMReplaceSubstructureResponse,
+            "description": "Successful LLM-based substructure replacement"
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": ErrorResponse,
+            "description": "Invalid SMILES strings"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponse,
+            "description": "Internal server error during replacement"
+        }
+    },
+    summary="Replace substructure using LLM",
+    description="Use GPT to intelligently replace a fragment in a molecule with another fragment"
+)
+async def llm_replace_substructure(
+    request: LLMReplaceSubstructureRequest,
+    controller: MoleculeController = Depends(get_molecule_controller)
+) -> LLMReplaceSubstructureResponse:
+    """
+    Replace a substructure in a molecule using GPT.
+    
+    This endpoint takes:
+    - **original_smiles**: SMILES of the original molecule
+    - **source_fragment_smiles**: SMILES of the fragment to be replaced
+    - **replacement_fragment_smiles**: SMILES of the replacement fragment
+    
+    Returns:
+    - The resulting molecule SMILES after replacement
+    - Explanation from the LLM
+    - Success status
+    """
+    try:
+        result = controller.replace_substructure_with_llm(
+            request.original_smiles,
+            request.source_fragment_smiles,
+            request.replacement_fragment_smiles
+        )
+        
+        return LLMReplaceSubstructureResponse(
+            original_smiles=request.original_smiles,
+            source_fragment_smiles=request.source_fragment_smiles,
+            replacement_fragment_smiles=request.replacement_fragment_smiles,
+            result_smiles=result["result_smiles"],
+            explanation=result.get("explanation"),
+            success=result["success"]
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error in LLM replacement: {str(e)}"
+        )
+
+
+# ============================================================================
+# ADMET Prediction Endpoint
+# ============================================================================
+
+class ADMETPredictionRequest(BaseModel):
+    """Request model for ADMET prediction."""
+    smiles: str = Field(
+        ...,
+        description="SMILES string representation of the molecule",
+        min_length=1
+    )
+
+
+class ADMETPredictionResponse(BaseModel):
+    """Response model for ADMET prediction."""
+    smiles: str = Field(..., description="Input SMILES string")
+    predictions: dict = Field(default_factory=dict, description="ADMET property predictions")
+    error: str | None = Field(None, description="Error message if prediction failed")
+
+
+@router.post(
+    "/molecule/predict-admet",
+    response_model=ADMETPredictionResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "model": ADMETPredictionResponse,
+            "description": "Successful ADMET prediction"
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": ErrorResponse,
+            "description": "Invalid SMILES string"
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponse,
+            "description": "Internal server error during prediction"
+        }
+    },
+    summary="Predict ADMET properties",
+    description="Predict ADMET (Absorption, Distribution, Metabolism, Excretion, Toxicity) properties for a molecule"
+)
+async def predict_admet(
+    request: ADMETPredictionRequest
+) -> ADMETPredictionResponse:
+    """
+    Predict ADMET properties for a molecule.
+    
+    This endpoint calls the ADMET AI service to predict pharmacokinetic
+    and toxicity properties including:
+    - Absorption: Caco-2, Solubility, HIA, Pgp
+    - Distribution: BBB, PPB, VDss
+    - Metabolism: CYP inhibition
+    - Excretion: Half-life, Clearance
+    - Toxicity: hERG, AMES, DILI
+    """
+    import requests
+    import os
+    
+    try:
+        # Call the ADMET service
+        admet_service_url = os.getenv("ADMET_SERVICE_URL", "http://localhost:8001")
+        
+        # Try to call the MCP tool endpoint
+        response = requests.post(
+            f"{admet_service_url}/call-tool",
+            json={
+                "name": "predict_admet_properties",
+                "arguments": {"smiles": request.smiles}
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            # MCP response format has content array
+            if "content" in result and len(result["content"]) > 0:
+                content = result["content"][0]
+                if "text" in content:
+                    import json
+                    predictions = json.loads(content["text"])
+                    return ADMETPredictionResponse(
+                        smiles=request.smiles,
+                        predictions=predictions.get("predictions", predictions),
+                        error=predictions.get("error")
+                    )
+            
+            return ADMETPredictionResponse(
+                smiles=request.smiles,
+                predictions=result.get("predictions", {}),
+                error=result.get("error")
+            )
+        else:
+            return ADMETPredictionResponse(
+                smiles=request.smiles,
+                predictions={},
+                error=f"ADMET service returned status {response.status_code}"
+            )
+            
+    except requests.exceptions.ConnectionError:
+        return ADMETPredictionResponse(
+            smiles=request.smiles,
+            predictions={},
+            error="ADMET service not available"
+        )
+    except Exception as e:
+        return ADMETPredictionResponse(
+            smiles=request.smiles,
+            predictions={},
+            error=str(e)
         )

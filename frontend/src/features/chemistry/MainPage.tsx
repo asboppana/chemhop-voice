@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeMolecule, highlightMolecule, scanBioisosteres, generateSvg } from '@/services/moleculeService';
-import type { MoleculeAnalysisResponse, BioisostereScanResponse } from '@/services/moleculeService';
+import { analyzeMolecule, highlightMolecule, scanBioisosteres, generateSvg, llmReplaceSubstructure, predictADMET } from '@/services/moleculeService';
+import type { MoleculeAnalysisResponse, BioisostereScanResponse, ADMETPredictionResponse } from '@/services/moleculeService';
 
 // Helper function to convert index to letter (0 -> A, 1 -> B, etc.)
 const indexToLetter = (index: number): string => {
@@ -36,10 +36,19 @@ export const ChemistryMainPage: React.FC = () => {
   const [bioisostereSvgs, setBioisostereSvgs] = useState<Map<string, string>>(new Map()); // SMILES -> SVG
   const [loadingSvgs, setLoadingSvgs] = useState(false);
   
-  // Agent-generated molecules state
-  const [agentGeneratedMolecules, setAgentGeneratedMolecules] = useState<string[]>([]);
-  const [generatingWithAgent, setGeneratingWithAgent] = useState(false);
-  const [agentResponse, setAgentResponse] = useState<string | null>(null);
+  // LLM-generated molecule state
+  const [generatedMolecule, setGeneratedMolecule] = useState<{
+    smiles: string;
+    svg: string;
+    sourceFragment: string;
+    replacementFragment: string;
+    explanation: string | null;
+  } | null>(null);
+  const [generatingMolecule, setGeneratingMolecule] = useState(false);
+  
+  // ADMET predictions state
+  const [admetPredictions, setAdmetPredictions] = useState<ADMETPredictionResponse | null>(null);
+  const [loadingAdmet, setLoadingAdmet] = useState(false);
 
   // Generate SVGs for bio-isostere results
   useEffect(() => {
@@ -180,18 +189,17 @@ export const ChemistryMainPage: React.FC = () => {
     setSelectedPatterns(new Set());
     setBioisostereResults(new Map());
     setBioisostereSvgs(new Map());
-    setAgentGeneratedMolecules([]);
-    setAgentResponse(null);
+    setGeneratedMolecule(null);
     if (result) {
       setDisplayedSvg(result.svg);
     }
   };
   
-  // Handle bio-isostere match click - send to agent and parse SMILES from response
+  // Handle bio-isostere match click - use LLM to replace substructure
   const handleBioisostereClick = async (
     patternIdx: number,
     matchSmiles: string,
-    queryGroupLetter: string
+    _queryGroupLetter: string
   ) => {
     if (!result) return;
     
@@ -205,79 +213,60 @@ export const ChemistryMainPage: React.FC = () => {
     const sourcePattern = filteredMatches[patternIdx];
     if (!sourcePattern) return;
     
-    setGeneratingWithAgent(true);
-    setAgentGeneratedMolecules([]);
-    setAgentResponse(null);
+    setGeneratingMolecule(true);
+    setGeneratedMolecule(null);
+    setAdmetPredictions(null);
     
     try {
-      // Serialize the data for the agent
-      const agentMessage = `Please replace the bio-isostere pattern in the molecule. Here is the data:
-
-Source Molecule SMILES: ${analyzedSmiles}
-Source Pattern SMILES: ${sourcePattern.trivial_name.smarts}
-Source Pattern Atom Indices: [${sourcePattern.atom_indices.join(', ')}]
-Matched Bio-isostere SMILES: ${matchSmiles}
-Query Group Letter: ${queryGroupLetter}
-
-Please use the replace-substructure tool to generate variant molecules by replacing the source pattern with the matched bio-isostere. Return only the SMILES strings of the generated molecules, one per line.`;
-
-      console.log('Sending to agent:', agentMessage);
+      console.log('Calling LLM replace substructure...');
+      console.log('Original:', analyzedSmiles);
+      console.log('Source fragment:', sourcePattern.trivial_name.smarts);
+      console.log('Replacement fragment:', matchSmiles);
       
-      // Call the chat agent
-      const chatResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: 'user',
-              content: agentMessage
-            }
-          ]
-        })
-      });
+      // Call the LLM replace substructure endpoint
+      const replaceResponse = await llmReplaceSubstructure(
+        analyzedSmiles,
+        sourcePattern.trivial_name.smarts,
+        matchSmiles
+      );
       
-      if (!chatResponse.ok) {
-        throw new Error(`Agent request failed: ${chatResponse.status}`);
-      }
+      console.log('LLM Replace Response:', replaceResponse);
       
-      const agentResult = await chatResponse.json();
-      console.log('Agent response:', agentResult);
-      
-      const responseText = agentResult.response || '';
-      setAgentResponse(responseText);
-      
-      // Parse SMILES strings from the agent's response
-      // Look for lines that look like SMILES (alphanumeric with special chars)
-      const smilesPattern = /^[A-Za-z0-9@+\-\[\]()=#$:.\/\\%]+$/;
-      const lines = responseText.split('\n').map((line: string) => line.trim());
-      const smilesList: string[] = [];
-      
-      for (const line of lines) {
-        if (line && smilesPattern.test(line) && line.length > 5) {
-          smilesList.push(line);
-        }
-      }
-      
-      console.log('Parsed SMILES from agent:', smilesList);
-      
-      if (smilesList.length > 0) {
-        setAgentGeneratedMolecules(smilesList);
+      if (replaceResponse.success && replaceResponse.result_smiles) {
+        // Generate SVG for the result molecule
+        const svgResponse = await generateSvg(replaceResponse.result_smiles, 400, 400);
         
-        // Display the first generated molecule
-        const svgResponse = await generateSvg(smilesList[0], 400, 400);
-        setDisplayedSvg(svgResponse.svg);
+        setGeneratedMolecule({
+          smiles: replaceResponse.result_smiles,
+          svg: svgResponse.svg,
+          sourceFragment: sourcePattern.trivial_name.smarts,
+          replacementFragment: matchSmiles,
+          explanation: replaceResponse.explanation
+        });
+        
+        // Call ADMET prediction for the generated molecule
+        setLoadingAdmet(true);
+        try {
+          console.log('Calling ADMET prediction...');
+          const admetResponse = await predictADMET(replaceResponse.result_smiles);
+          console.log('ADMET Response:', admetResponse);
+          setAdmetPredictions(admetResponse);
+        } catch (admetErr: any) {
+          console.error('Error getting ADMET predictions:', admetErr);
+          // Don't set error - ADMET is optional, molecule generation succeeded
+        } finally {
+          setLoadingAdmet(false);
+        }
       } else {
-        console.warn('No valid SMILES found in agent response');
+        console.warn('LLM replacement was not successful:', replaceResponse.explanation);
+        setError(replaceResponse.explanation || 'Failed to generate replacement molecule');
       }
       
     } catch (err: any) {
-      console.error('Error communicating with agent:', err);
-      setError(err.message || 'Failed to generate molecules with agent');
+      console.error('Error in LLM replacement:', err);
+      setError(err.message || 'Failed to generate replacement molecule');
     } finally {
-      setGeneratingWithAgent(false);
+      setGeneratingMolecule(false);
     }
   };
 
@@ -522,7 +511,7 @@ Please use the replace-substructure tool to generate variant molecules by replac
                           <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black text-white text-[10px] font-medium flex items-center justify-center">
                             {indexToLetter(index)}
                           </div>
-                          <p className="text-xs font-medium mb-1 pl-6 leading-tight line-clamp-2 min-h-[28px]">{match.trivial_name.name}</p>
+                          <p className="text-xs font-medium mb-1 pl-6 leading-tight min-h-[28px]">{match.trivial_name.name}</p>
                           <div className="flex-1 min-h-0 flex items-center justify-center p-1">
                             {match.svg ? (
                               <div 
@@ -543,38 +532,96 @@ Please use the replace-substructure tool to generate variant molecules by replac
               })()}
             </div>
 
-            {/* Agent Generated Molecules */}
-            {agentGeneratedMolecules.length > 0 && (
+            {/* Generated Molecule Result */}
+            {generatedMolecule && (
               <div className="mt-12 border-t border-gray-300 pt-6">
-                <h2 className="text-lg font-light mb-6 uppercase tracking-wider text-black">
-                  Agent Generated Molecules ({agentGeneratedMolecules.length})
+                <h2 className="text-sm font-medium mb-6 uppercase tracking-wider text-black">
+                  Generated Molecule
                 </h2>
                 
-                {agentResponse && (
-                  <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-xs font-medium text-gray-700 mb-2">Agent Response:</p>
-                    <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono">{agentResponse}</pre>
-                  </div>
-                )}
-                
-                <div className="space-y-4">
-                  {agentGeneratedMolecules.map((smiles, idx) => (
-                    <div key={idx} className="border border-gray-300 rounded-lg p-4 bg-white">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-medium">Molecule {idx + 1}</h3>
-                        <button
-                          onClick={async () => {
-                            const svgResponse = await generateSvg(smiles, 400, 400);
-                            setDisplayedSvg(svgResponse.svg);
-                          }}
-                          className="text-xs bg-black text-white px-3 py-1 rounded hover:bg-gray-800 transition-colors"
-                        >
-                          View
-                        </button>
-                      </div>
-                      <p className="text-xs text-gray-600 font-mono break-all">{smiles}</p>
+                <div className="flex flex-col lg:flex-row gap-6">
+                  {/* Molecule View - Left Side */}
+                  <div className="flex-shrink-0 w-full lg:w-auto">
+                    <div className="border border-gray-300 rounded-lg p-4 bg-white w-full max-w-md mx-auto lg:mx-0 aspect-square lg:w-96">
+                      <div 
+                        dangerouslySetInnerHTML={{ __html: generatedMolecule.svg }}
+                        className="pattern-svg-container w-full h-full flex items-center justify-center"
+                      />
                     </div>
-                  ))}
+                    <p className="text-[10px] text-gray-600 font-mono mt-2 break-all max-w-md mx-auto lg:mx-0">
+                      {generatedMolecule.smiles}
+                    </p>
+                    
+                    {/* Replacement Info */}
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg max-w-md mx-auto lg:mx-0">
+                      <p className="text-[9px] uppercase tracking-wider text-gray-600 mb-2">Replacement Details</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-start gap-2">
+                          <span className="text-[10px] text-gray-500 w-16 flex-shrink-0">Source:</span>
+                          <span className="text-[10px] font-mono text-gray-700 break-all">{generatedMolecule.sourceFragment}</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-[10px] text-gray-500 w-16 flex-shrink-0">Replaced:</span>
+                          <span className="text-[10px] font-mono text-gray-700 break-all">{generatedMolecule.replacementFragment}</span>
+                        </div>
+                      </div>
+                      {generatedMolecule.explanation && (
+                        <p className="text-[10px] text-gray-600 mt-3 pt-2 border-t border-gray-200">
+                          {generatedMolecule.explanation}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* ADMET Properties - Right Side */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium uppercase tracking-wider text-black mb-3">
+                      ADMET Properties
+                    </h3>
+                    <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
+                      {loadingAdmet ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+                          <span className="ml-3 text-sm text-gray-600">Loading ADMET predictions...</span>
+                        </div>
+                      ) : admetPredictions?.error ? (
+                        <div className="px-4 py-8 text-center">
+                          <p className="text-sm text-gray-500">{admetPredictions.error}</p>
+                        </div>
+                      ) : admetPredictions?.predictions && Object.keys(admetPredictions.predictions).length > 0 ? (
+                        <div className="max-h-[500px] overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Property</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">Value</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {Object.entries(admetPredictions.predictions)
+                                .sort(([a], [b]) => a.localeCompare(b))
+                                .map(([property, value]) => (
+                                  <tr key={property} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2 text-gray-700 text-xs">
+                                      {property.replace(/_/g, ' ')}
+                                    </td>
+                                    <td className="px-4 py-2 text-right font-mono text-gray-600 text-xs">
+                                      {typeof value === 'number' ? value.toFixed(3) : String(value)}
+                                    </td>
+                                  </tr>
+                                ))
+                              }
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="px-4 py-8 text-center">
+                          <p className="text-sm text-gray-500">No ADMET predictions available</p>
+                          <p className="text-xs text-gray-400 mt-1">ADMET service may not be running</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -607,7 +654,7 @@ Please use the replace-substructure tool to generate variant molecules by replac
                                 <div className="w-5 h-5 rounded-full bg-black text-white text-[10px] font-medium flex items-center justify-center flex-shrink-0">
                                   {indexToLetter(patternIdx)}
                                 </div>
-                                <span className="text-[10px] font-medium text-black leading-tight line-clamp-3 overflow-hidden">{originalPattern.trivial_name.name}</span>
+                                <span className="text-[10px] font-medium text-black leading-tight">{originalPattern.trivial_name.name}</span>
                               </div>
                               <div className="w-full h-12 flex items-center justify-center mb-2 overflow-hidden">
                                 {originalPattern.svg ? (
@@ -641,13 +688,13 @@ Please use the replace-substructure tool to generate variant molecules by replac
                                 <button
                                   key={matchIdx}
                                   onClick={() => handleBioisostereClick(patternIdx, match.centroid_smiles, queryGroupLetter)}
-                                  disabled={generatingWithAgent}
+                                  disabled={generatingMolecule}
                                   className={`border border-gray-300 rounded p-2 bg-white transition-colors flex flex-col w-full text-left ${
-                                    generatingWithAgent 
+                                    generatingMolecule 
                                       ? 'cursor-not-allowed opacity-50' 
                                       : 'hover:border-gray-400 hover:shadow-md cursor-pointer'
                                   }`}
-                                  title={`Click to send pattern ${queryGroupLetter} to agent for replacement`}
+                                  title={`Click to generate molecule with this bio-isostere replacement`}
                                 >
                                   {/* Header */}
                                   <div className="flex items-center justify-between mb-1">

@@ -212,3 +212,32 @@ class ReplaceSubstructureResponse(BaseModel):
     original_smiles: str = Field(..., description="Original parent molecule SMILES")
     replacement_smiles_list: List[str] = Field(..., description="List of generated molecule SMILES (up to 3)")
     num_generated: int = Field(..., description="Number of successfully generated molecules")
+
+
+class LLMReplaceSubstructureRequest(BaseModel):
+    """Request model for LLM-based substructure replacement."""
+    original_smiles: str = Field(
+        ...,
+        description="SMILES string of the original molecule",
+        min_length=1
+    )
+    source_fragment_smiles: str = Field(
+        ...,
+        description="SMILES string of the fragment to be replaced (matched pattern)",
+        min_length=1
+    )
+    replacement_fragment_smiles: str = Field(
+        ...,
+        description="SMILES string of the replacement fragment (selected bio-isostere)",
+        min_length=1
+    )
+
+
+class LLMReplaceSubstructureResponse(BaseModel):
+    """Response model for LLM-based substructure replacement."""
+    original_smiles: str = Field(..., description="Original molecule SMILES")
+    source_fragment_smiles: str = Field(..., description="Fragment that was replaced")
+    replacement_fragment_smiles: str = Field(..., description="Fragment used for replacement")
+    result_smiles: str = Field(..., description="Resulting molecule SMILES after replacement")
+    explanation: Optional[str] = Field(None, description="LLM explanation of the replacement")
+    success: bool = Field(..., description="Whether the replacement was successful")
