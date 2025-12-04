@@ -12,7 +12,8 @@ In the model's system prompt it is informed of:
 """
 
 import logging
-from elevenlabs.client import ElevenLabs
+from elevenlabs import ElevenLabs
+
 from src.config.settings import get_settings
 from src.services.elevenlabs.knowledge_base import get_knowledge_base
 from src.services.prompts import VOICE_AGENT_SYSTEM_PROMPT, VOICE_AGENT_FIRST_MESSAGE
@@ -26,7 +27,7 @@ def create_elevenlabs_agent(name: str) -> str:
         name=name,
         conversation_config={
             "turn": {
-                "soft_timeout_config": {"timeout_seconds": 3.0, "message": "Hmmm, well that's interesting..."}
+                "soft_timeout_config": {"timeout_seconds": 7.5, "message": "Hmmm, well that's interesting..."}
             },
             "tts": {
                 "voice_id": "21m00Tcm4TlvDq8ikWAM",
@@ -51,7 +52,7 @@ def create_elevenlabs_agent(name: str) -> str:
                 "prompt": {
                     "prompt": VOICE_AGENT_SYSTEM_PROMPT,
                     "llm": "claude-sonnet-4-5",
-                    "temperature": 0.7,
+                    "temperature": 0.2,
                     "knowledge_base": knowledge_base
                 }
             }

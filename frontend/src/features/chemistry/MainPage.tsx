@@ -1,94 +1,126 @@
 import React, { useEffect, useState } from 'react';
-import {
-  fetchVoiceAgentId,
-  loadElevenLabsScript,
-  initializeElevenLabsWidget,
-} from '@/services/elevenLabs';
-import RotatingSedonaLogo from '@/components/animations/RotatingSedonaLogo';
+import FloatingNullState from '@/components/animations/FloatingNullState';
+import { useChatContext } from '@/contexts/ChatContext';
 
 export const ChemistryMainPage: React.FC = () => {
-  const [agentId, setAgentId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { 
+    state: { voiceActive, voiceConnectionStatus, voiceAgentStatus, messages, isOpen },
+    startVoice,
+    openChat
+  } = useChatContext();
+  
   const [error, setError] = useState<string | null>(null);
+  const [initializing, setInitializing] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-
-    const initializeVoiceAgent = async () => {
-      try {
-        // Load the ElevenLabs script
-        await loadElevenLabsScript();
-
-        // Fetch the agent ID from backend
-        const id = await fetchVoiceAgentId();
-
-        if (!mounted) return;
-
-        setAgentId(id);
-        setLoading(false);
-
-        // Initialize the widget after a short delay to ensure DOM is ready
-        setTimeout(() => {
-          if (mounted && id) {
-            initializeElevenLabsWidget(id, 'elevenlabs-widget-container');
-          }
-        }, 100);
-      } catch (err) {
-        if (!mounted) return;
-        console.error('Failed to initialize voice agent:', err);
-        setError(
-          err instanceof Error ? err.message : 'Failed to load voice agent'
-        );
-        setLoading(false);
+    // Auto-start voice conversation on mount if not already active
+    // Note: Chat panel will auto-open when first message is received
+    const initVoice = async () => {
+      if (!voiceActive && !initializing) {
+        setInitializing(true);
+        const started = await startVoice();
+        if (!started) {
+          setError('Failed to start voice conversation. Please try again.');
+        }
+        setInitializing(false);
       }
     };
 
-    initializeVoiceAgent();
-
+    // Small delay to ensure chat context is ready
+    const timer = setTimeout(initVoice, 500);
+    
+    // DON'T cleanup voice on unmount - voice should persist across navigation
     return () => {
-      mounted = false;
+      clearTimeout(timer);
+      // Voice conversation continues even if MainPage unmounts
     };
-  }, []);
+  }, []); // Only run once on mount
+
+  const isConnected = voiceConnectionStatus === 'connected';
+  const isSpeaking = voiceAgentStatus === 'speaking';
+  
+  // Check if there's actual conversation beyond the initial system greeting
+  // Hide animation if there are user messages or multiple AI messages
+  const hasUserMessages = messages.some(m => m.type === 'user');
+  const hasConversation = hasUserMessages || messages.length > 1;
+  const shouldShowAnimation = !error && !hasConversation;
+
+  // Auto-open chat panel when conversation starts
+  useEffect(() => {
+    if (hasConversation && !isOpen) {
+      console.log('🎯 Conversation detected, auto-opening chat panel');
+      openChat();
+    }
+  }, [hasConversation, isOpen, openChat]);
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-8">
-      <div className="w-full max-w-4xl">
-        {loading && (
-          <div className="text-center">
-            <RotatingSedonaLogo size={60} />
-            <p className="mt-4 text-gray-1000">Loading voice agent...</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-            <p className="text-red-800">Error: {error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && agentId && (
-          <div className="text-center">
-            <h1 className="text-3xl font-bold mb-8 text-gray-900">
-              Drug Discovery Assistant
-            </h1>
-            <div
-              id="elevenlabs-widget-container"
-              className="w-full min-h-[500px] flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200"
-            >
-              {/* ElevenLabs widget will be mounted here */}
+    <div className="h-full max-h-[90vh] bg-white flex flex-col items-center justify-center p-8">
+      <div className="w-full max-w-4xl flex flex-col items-center">
+        {/* Show animation only until conversation starts */}
+        {shouldShowAnimation && (
+          <div className="relative flex justify-center">
+            <div className="flex justify-center -translate-y-8">
+              <FloatingNullState 
+                hideIcons={isSpeaking}
+                timing={
+                  isSpeaking
+                    ? {
+                        pushDurationMs: 800,
+                        relaxDurationMs: 500,
+                        itemHoldMs: 200,
+                        idleMinMs: 600,
+                        idleJitterMs: 300,
+                      }
+                    : undefined
+                }
+              />
             </div>
-            <p className="mt-4 text-gray-600 text-sm">
-              Start a conversation with our AI-powered drug discovery assistant
-            </p>
+            {/* Pulsing green dot in center when connected */}
+            {isConnected && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                {/* Outer glow - larger, subtle */}
+                <div 
+                  className="absolute w-5 h-5 rounded-full bg-biomarker-green/20"
+                  style={{
+                    animation: 'pulse-glow 2s ease-in-out infinite',
+                  }}
+                />
+                {/* Inner core - bright green */}
+                <div 
+                  className="absolute w-2 h-2 rounded-full bg-biomarker-green shadow-lg"
+                  style={{
+                    animation: 'pulse-core 2s ease-in-out infinite',
+                    boxShadow: '0 0 8px rgba(34, 197, 94, 0.6)',
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Pulse animations */}
+      <style>{`
+        @keyframes pulse-glow {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 0.4;
+          }
+          50% {
+            transform: scale(1.4);
+            opacity: 0.2;
+          }
+        }
+        
+        @keyframes pulse-core {
+          0%, 100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.2);
+          }
+        }
+      `}</style>
     </div>
   );
 };
