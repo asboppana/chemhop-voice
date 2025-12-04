@@ -3,7 +3,6 @@ MCP Server for Drug Discovery Tools.
 
 This server exposes chemistry and drug discovery tools via the Model Context Protocol (MCP).
 It provides access to:
-- ADMET AI: Predict ADMET properties for molecules
 - Smart Chemist: Annotate molecular structures with functional groups
 
 Run with: python -m src.services.mcp.mcp_server
@@ -21,72 +20,18 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 # Import our tools
-from src.services.mcp.admet_tools.admet_ai_tool import ADMETAITool
 from src.services.mcp.smart_chemist.tools.smart_chemist import (
     SmartChemist,
     convert_string_input_to_smiles,
 )
+from src.services.mcp.patent_search.surechembl_tool import SureChEMBLPatentTool
 
 # Initialize FastMCP server
 mcp = FastMCP("drugdiscovery_mcp")
 
 # Initialize tool instances
-admet_tool = ADMETAITool()
 smart_chemist = SmartChemist()
-
-
-@mcp.tool()
-def predict_admet_properties(smiles: str) -> Dict[str, Any]:
-    """
-    Predict ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) 
-    properties for a molecule using its SMILES string representation.
-    
-    This tool uses the ADMET AI model to predict various pharmacokinetic and 
-    toxicity properties that are critical for drug development, including:
-    - Absorption properties (e.g., Caco-2 permeability, solubility)
-    - Distribution properties (e.g., plasma protein binding, volume of distribution)
-    - Metabolism properties (e.g., CYP enzyme inhibition)
-    - Excretion properties (e.g., clearance, half-life)
-    - Toxicity properties (e.g., hERG inhibition, hepatotoxicity)
-    
-    Args:
-        smiles: SMILES string representation of the molecule
-                Examples: "CCO" (ethanol), "c1ccccc1" (benzene), 
-                         "CC(=O)Oc1ccccc1C(=O)O" (aspirin)
-    
-    Returns:
-        Dictionary containing:
-        - smiles: The input SMILES string
-        - predictions: Dictionary of predicted ADMET properties with property 
-                      names as keys and predicted values/scores as values
-    
-    Raises:
-        ValueError: If the SMILES string is invalid or prediction fails
-    
-    Example:
-        >>> predict_admet_properties("CCO")
-        {
-            "smiles": "CCO",
-            "predictions": {
-                "Caco2_Wang": 0.234,
-                "Solubility_AqSolDB": -0.234,
-                "HIA_Hou": 0.95,
-                ...
-            }
-        }
-    """
-    try:
-        predictions = admet_tool.predict(smiles)
-        return {
-            "smiles": smiles,
-            "predictions": predictions
-        }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "smiles": smiles
-        }
-
+patent_tool = SureChEMBLPatentTool()
 
 @mcp.tool()
 def annotate_molecule(smiles: str) -> Dict[str, Any]:
@@ -206,6 +151,26 @@ def convert_identifier_to_smiles(identifier: str) -> Dict[str, Any]:
             "smiles_list": [],
             "count": 0
         }
+
+@mcp.tool()
+def check_molecule_patent(smiles: str) -> Dict[str, Any]:
+    """
+    Check if molecule appears in patent literature (SureChEMBL).
+    Quick FTO check - NOT legal advice, consult patent attorney.
+    
+    Args:
+        smiles: SMILES string of molecule
+        
+    Returns:
+        Patent status with is_patented, fto_status, confidence, patents list
+    """
+    try:
+        return patent_tool.check_patent(smiles)
+    except ValueError as e:
+        return {"error": str(e), "smiles": smiles, "is_patented": None}
+    except Exception as e:
+        # logger.error(f"Patent check error: {e}")
+        return {"error": f"Patent check failed: {str(e)}", "smiles": smiles}
 
 
 def main():
