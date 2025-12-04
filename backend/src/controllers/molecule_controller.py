@@ -4,14 +4,17 @@ Controller for molecule analysis operations.
 Handles the business logic for analyzing molecules using SMILES strings
 and interfacing with the SmartChemist tool.
 """
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 import math
+import os
+import re
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw, rdMolTransforms, rdMolAlign, rdDepictor
 from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Geometry import Point3D
 import numpy as np
 import copy
+from openai import OpenAI
 
 from src.services.mcp.smart_chemist.tools.smart_chemist import SmartChemist
 from src.api.models.molecule import MoleculeResponse, Match, TrivialName, HighlightResponse
@@ -483,6 +486,138 @@ class MoleculeController:
         svg = drawer.GetDrawingText()
         
         return svg
+    
+    def replace_substructure_with_llm(
+        self,
+        original_smiles: str,
+        source_fragment_smiles: str,
+        replacement_fragment_smiles: str
+    ) -> Dict[str, Any]:
+        """
+        Use GPT to intelligently replace a substructure in a molecule.
+        
+        This function sends the original molecule, the fragment to replace,
+        and the replacement fragment to GPT, which returns the resulting
+        molecule SMILES with the replacement made.
+        
+        Args:
+            original_smiles: SMILES of the original molecule
+            source_fragment_smiles: SMILES of the fragment to be replaced
+            replacement_fragment_smiles: SMILES of the replacement fragment
+            
+        Returns:
+            Dictionary containing:
+            - result_smiles: The resulting molecule SMILES
+            - explanation: LLM explanation of what was done
+            - success: Whether the replacement was successful
+        """
+        print(f"\n=== LLM Substructure Replacement ===")
+        print(f"Original: {original_smiles}")
+        print(f"Source fragment: {source_fragment_smiles}")
+        print(f"Replacement fragment: {replacement_fragment_smiles}")
+        
+        # Validate inputs
+        original_mol = Chem.MolFromSmiles(original_smiles)
+        source_mol = Chem.MolFromSmiles(source_fragment_smiles)
+        replacement_mol = Chem.MolFromSmiles(replacement_fragment_smiles)
+        
+        if not original_mol:
+            raise ValueError(f"Invalid original SMILES: {original_smiles}")
+        if not source_mol:
+            raise ValueError(f"Invalid source fragment SMILES: {source_fragment_smiles}")
+        if not replacement_mol:
+            raise ValueError(f"Invalid replacement fragment SMILES: {replacement_fragment_smiles}")
+        
+        # Canonicalize inputs to avoid ambiguity for the LLM
+        canonical_original = Chem.MolToSmiles(original_mol)
+        canonical_source = Chem.MolToSmiles(source_mol)
+        canonical_replacement = Chem.MolToSmiles(replacement_mol)
+        print(f"Canonical Original: {canonical_original}")
+        print(f"Canonical Source: {canonical_source}")
+        print(f"Canonical Replacement: {canonical_replacement}")
+        
+        # Initialize OpenAI client
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Construct the prompt
+        system_prompt = """You are an expert computational chemist. Replace the source fragment in the molecule with the replacement fragment while maintaining proper chemical connectivity and valence.
+
+You must respond in EXACTLY this format:
+SMILES: <the resulting SMILES string>
+
+Only output the SMILES line, nothing else."""
+
+        user_prompt = f"""Replace the source fragment with the replacement fragment in the original molecule.
+
+Original Molecule: {canonical_original}
+Source Fragment to Replace: {canonical_source}  
+Replacement Fragment: {canonical_replacement}"""
+
+        try:
+            # Call GPT
+            response = client.chat.completions.create(
+                model="gpt-5.1-2025-11-13",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,  # Low temperature for more deterministic output
+                max_completion_tokens=1000
+            )
+            
+            response_text = response.choices[0].message.content.strip()
+            print(f"GPT Response: {response_text}")
+            
+            # Extract SMILES from "SMILES: <value>" format
+            result_smiles = None
+            print("RESPONSE TEXT:", response_text)
+            if response_text.startswith("SMILES:"):
+                result_smiles = response_text[7:].strip()
+            else:
+                # Try regex as fallback
+                smiles_match = re.search(r'SMILES:\s*(.+)', response_text)
+                if smiles_match:
+                    result_smiles = smiles_match.group(1).strip()
+            
+            # Final fallback: treat full response as SMILES if it looks like plain text
+            if not result_smiles:
+                candidate = response_text.strip().strip('`').splitlines()[0].strip()
+                if candidate:
+                    candidate_mol = Chem.MolFromSmiles(candidate, sanitize=False)
+                    if candidate_mol:
+                        print("Falling back to direct SMILES extraction.")
+                        result_smiles = candidate
+            
+            print(f"Extracted SMILES: {result_smiles}")
+            
+            if not result_smiles:
+                print("SMILESSS:", result_smiles)
+                raise ValueError(f"Could not extract SMILES from response: {response_text}")
+            
+            # Validate the result SMILES
+            result_mol = Chem.MolFromSmiles(result_smiles, sanitize=False)
+            if not result_mol:
+                print(f"Warning: GPT returned invalid SMILES: {result_smiles}")
+                raise ValueError(f"GPT returned invalid SMILES: {result_smiles}")
+            
+            # Canonicalize the result
+            # canonical_smiles = Chem.MolToSmiles(result_mol)
+            
+            print(f"Result SMILES: {result_smiles}")
+            
+            return {
+                "result_smiles": result_smiles,
+                "explanation": None,
+                "success": True
+            }
+            
+        except Exception as e:
+            print(f"Error in LLM replacement: {str(e)}")
+            return {
+                "result_smiles": original_smiles,
+                "explanation": f"Error: {str(e)}",
+                "success": False
+            }
     
     def __del__(self):
         """Cleanup when controller is destroyed."""

@@ -233,3 +233,46 @@ export const replaceSubstructure = async (
   });
   return response.data;
 };
+
+// LLM-based substructure replacement
+export interface LLMReplaceSubstructureRequest {
+  original_smiles: string;
+  source_fragment_smiles: string;
+  replacement_fragment_smiles: string;
+}
+
+export interface LLMReplaceSubstructureResponse {
+  original_smiles: string;
+  source_fragment_smiles: string;
+  replacement_fragment_smiles: string;
+  result_smiles: string;
+  explanation: string | null;
+  success: boolean;
+}
+
+export const llmReplaceSubstructure = async (
+  originalSmiles: string,
+  sourceFragmentSmiles: string,
+  replacementFragmentSmiles: string
+): Promise<LLMReplaceSubstructureResponse> => {
+  const response = await axios.post(`${API_BASE_URL}/api/v1/molecule/llm-replace-substructure`, {
+    original_smiles: originalSmiles,
+    source_fragment_smiles: sourceFragmentSmiles,
+    replacement_fragment_smiles: replacementFragmentSmiles
+  });
+  return response.data;
+};
+
+// ADMET Prediction
+export interface ADMETPredictionResponse {
+  smiles: string;
+  predictions: Record<string, number>;
+  error: string | null;
+}
+
+export const predictADMET = async (smiles: string): Promise<ADMETPredictionResponse> => {
+  const response = await axios.post(`${API_BASE_URL}/api/v1/molecule/predict-admet`, {
+    smiles
+  });
+  return response.data;
+};

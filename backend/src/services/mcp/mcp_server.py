@@ -346,4 +346,6 @@ def main():
     mcp.run()
 
 if __name__ == "__main__":
-    main()
+    ivermectin_smiles = "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O"
+    output = annotate_molecule(ivermectin_smiles)
+    print(output)
