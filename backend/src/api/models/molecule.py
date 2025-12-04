@@ -31,6 +31,7 @@ class TrivialName(BaseModel):
 class Match(BaseModel):
     """A matched chemical pattern in the molecule."""
     atom_indices: List[int] = Field(..., description="List of atom indices that match the pattern")
+    svg: Optional[str] = Field(None, description="SVG representation of the matched substructure")
     trivial_name: TrivialName = Field(..., description="Information about the matched pattern")
 
 
@@ -43,6 +44,25 @@ class MoleculeResponse(BaseModel):
     name: str = Field(..., description="Name of the molecule")
     svg: str = Field(..., description="SVG representation of the molecule structure")
     matches: List[Match] = Field(..., description="List of matched chemical patterns")
+    smiles: str = Field(..., description="Original SMILES string")
+
+
+class HighlightRequest(BaseModel):
+    """Request model for highlighting atoms in a molecule."""
+    smiles: str = Field(
+        ...,
+        description="SMILES string representation of the molecule",
+        min_length=1
+    )
+    atom_indices: List[int] = Field(
+        ...,
+        description="List of atom indices to highlight"
+    )
+
+
+class HighlightResponse(BaseModel):
+    """Response model for highlighted molecule."""
+    svg: str = Field(..., description="SVG representation of the molecule with highlighted atoms")
     smiles: str = Field(..., description="Original SMILES string")
 
 

@@ -10,6 +10,8 @@ from src.api.models import ErrorResponse
 from src.api.models.molecule import (
     MoleculeRequest,
     MoleculeResponse,
+    HighlightRequest,
+    HighlightResponse,
     BioisostereScanRequest,
     BioisostereScanResponse,
     ClusterInfoResponse
@@ -82,6 +84,41 @@ async def analyze_molecule(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error analyzing molecule: {str(e)}"
+        )
+
+
+@router.post(
+    "/molecule/highlight",
+    status_code=status.HTTP_200_OK,
+    response_model=HighlightResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        422: {"model": ErrorResponse, "description": "Invalid SMILES string"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def highlight_molecule(
+    request: HighlightRequest,
+    controller: MoleculeController = Depends(get_molecule_controller),
+) -> HighlightResponse:
+    """
+    Generate an SVG of a molecule with specific atoms highlighted.
+    
+    Takes a SMILES string and a list of atom indices to highlight,
+    then returns an SVG visualization with those atoms highlighted.
+    """
+    try:
+        result = controller.highlight_molecule(request.smiles, request.atom_indices)
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid SMILES string: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error highlighting molecule: {str(e)}"
         )
 
 

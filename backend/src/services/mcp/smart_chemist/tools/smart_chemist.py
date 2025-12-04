@@ -195,12 +195,21 @@ class SmartChemist:
             if mol.HasSubstructMatch(pattern, useChirality=True):
                 hit_atom_indices_list = mol.GetSubstructMatches(pattern, useChirality=True)
                 for hit_atom_indices in hit_atom_indices_list:
-                    # convert the pattern to a molecule
-                    pattern_mol = Chem.MolFromSmarts(db_row.smarts)
+                    # convert the pattern to a molecule for visualization
+                    # For cyclic groups, use MolFromSmiles for cleaner rendering
+                    if db_row.group == "cyclic":
+                        pattern_mol = Chem.MolFromSmiles(db_row.smarts)
+                    else:
+                        pattern_mol = Chem.MolFromSmarts(db_row.smarts)
                     
                     if pattern_mol is not None:
+                        # Sanitize to ensure proper aromaticity perception
+                        try:
+                            Chem.SanitizeMol(pattern_mol)
+                        except (ValueError, RuntimeError):
+                            pass  # If sanitization fails, continue with unsanitized mol
                         AllChem.Compute2DCoords(pattern_mol)
-                        pattern_svg = self._mol_to_image_str(pattern_mol, 400, 400)
+                        pattern_svg = self._mol_to_image_str(pattern_mol, 200, 200)
                     else:
                         pattern_svg = None
                         
@@ -229,6 +238,10 @@ class SmartChemist:
         if not mol.GetConformer(0):
             raise ValueError("Failed to generate 2D conformation for mol")
         drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
+        
+        # Set transparent background
+        drawer.drawOptions().clearBackground = False
+        
         drawer.DrawMolecule(mol)
         drawer.FinishDrawing()
         result = drawer.GetDrawingText()

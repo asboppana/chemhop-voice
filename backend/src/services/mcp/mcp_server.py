@@ -15,8 +15,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+from rdkit import Chem
+
+from typing import Optional
+
 import requests
-from fastmcp import types
 from fastmcp import FastMCP
 
 # Add the backend directory to sys.path for imports
