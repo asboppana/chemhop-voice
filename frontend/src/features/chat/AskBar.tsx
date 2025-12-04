@@ -137,7 +137,7 @@ export const AskBar: React.FC<AskBarProps> = ({ className = "" }) => {
               placeholder=""
               className="w-full border-none outline-none text-gray-1500 placeholder-gray-1000 text-sm font-medium bg-transparent py-3 caret-gray-1500"
             />
-            {question.trim().length === 0 && (
+            {question.trim().length === 0 && !isFocused && (
               <div className="pointer-events-none absolute inset-0 flex items-center text-gray-1000 text-sm font-medium">
                 <span>{animatedPlaceholder}</span>
                 <span className="typing-caret" />
