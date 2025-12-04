@@ -55,11 +55,11 @@ class VoiceASRService {
           }
           this.finalTranscriptTimer = setTimeout(() => {
             if (this.currentTranscript.trim()) {
-              console.log('🎤 Finalizing after 5s pause:', this.currentTranscript.trim());
+              console.log('🎤 Finalizing after 3s pause:', this.currentTranscript.trim());
               this.callbacks?.onTranscript(this.currentTranscript.trim(), true);
               this.currentTranscript = '';
             }
-          }, 5000); // 5 second pause
+          }, 3000); // 3 second pause
         } else if (interimTranscript) {
           // Show streaming interim results
           const fullText = (this.currentTranscript + ' ' + interimTranscript).trim();

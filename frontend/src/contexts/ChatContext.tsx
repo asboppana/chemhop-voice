@@ -217,9 +217,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     dispatch({ type: 'SET_LOADING', loading: true });
     
     try {
-      // Build conversation history for context
+      // Build conversation history for context - only last 3 messages
       const conversationHistory = state.messages
         .filter(m => !m.isStreaming) // Only include finalized messages
+        .slice(-3) // Keep only last 3 messages for context
         .map(m => ({
           role: m.type === 'user' ? 'user' as const : 'assistant' as const,
           content: m.content

@@ -8,7 +8,7 @@ const CHAT_CONFIG = {
   // Floating mode positioning
   FLOATING_TOP_OFFSET: 120,
   FLOATING_BOTTOM_OFFSET: 4,
-  FLOATING_RIGHT_OFFSET: 6,
+  FLOATING_RIGHT_OFFSET: 8,
   FLOATING_WIDTH: 384, // w-96 = 24rem = 384px
   
   // Resize constraints
@@ -195,29 +195,45 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       )}
       
       <form onSubmit={handleSubmit} className="flex gap-2">
-        {/* Voice toggle button - only show when voice is NOT active */}
-        {!voiceActive && (
+        {/* Voice toggle button */}
+        <button
+          type="button"
+          onClick={handleVoiceToggle}
+          className={`flex-shrink-0 px-3 py-2 rounded-full transition-all border border-gray-1500 ${
+            voiceActive 
+              ? 'bg-biomarker-green/20 text-biomarker-green hover:bg-biomarker-green/30' 
+              : 'bg-[#1B1B1B] text-gray-750 hover:text-white'
+          }`}
+          title={voiceActive ? "Stop voice conversation" : "Start voice conversation"}
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+          </svg>
+        </button>
+
+        {/* Text input - always enabled */}
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          placeholder={voiceActive ? "Type or speak your message..." : "Type your message..."}
+          className="flex-1 px-3 py-2 bg-[#1B1B1B] text-white placeholder-gray-750 rounded-full border border-gray-1500 text-sm focus:outline-none focus:border-gray-1000"
+          disabled={isLoading}
+        />
+
+        {/* Send button - only show when there's text to send */}
+        {inputValue.trim() && (
           <button
-            type="button"
-            onClick={handleVoiceToggle}
-            className="flex-shrink-0 px-3 py-2 rounded-full transition-all bg-[#1B1B1B] text-gray-750 hover:text-white border border-gray-1500"
-            title="Start voice conversation"
+            type="submit"
+            disabled={isLoading}
+            className="flex-shrink-0 px-3 py-2 rounded-full transition-all bg-white text-black hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Send message"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
           </button>
         )}
-
-        {/* Placeholder input - voice only mode */}
-        <input
-          type="text"
-          value=""
-          placeholder={voiceActive ? "Listening... speak your message" : "Click mic to start listening"}
-          className="flex-1 px-3 py-2 bg-[#1B1B1B] text-white placeholder-gray-750 rounded-full border border-gray-1500 text-sm opacity-75"
-          disabled={true}
-          readOnly
-        />
       </form>
     </div>
   );

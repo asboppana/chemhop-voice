@@ -18,7 +18,6 @@ from src.config.settings import get_settings
 from src.api.routers import api_router
 from src.middleware.request_logging import RequestLoggingMiddleware
 from src.middleware.error_handling import ErrorHandlingMiddleware
-from src.services.elevenlabs import create_elevenlabs_agent
 from src.services.mcp.mcp_server import mcp
 
 
@@ -34,13 +33,7 @@ async def lifespan(app: FastAPI):
         logging.error("Supabase configuration missing! Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
     else:
         logging.info(f"Supabase configured for environment: {settings.environment}")
-    
-    # Initialize voice agent service
-    try:
-        app.state.voice_agent_id = create_elevenlabs_agent("drugdiscoveryagent")
-    except Exception as e:
-        logging.error(f"Failed to create voice agent: {e}")
-    
+
     # Initialize background jobs
     yield
     
