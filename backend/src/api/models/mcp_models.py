@@ -87,12 +87,13 @@ class TrivialName(BaseModel):
 class AnnotationMatch(BaseModel):
     """A single functional group match in the molecule."""
     atom_indices: List[int] = Field(..., description="Indices of atoms matching the pattern")
+    svg: Optional[str] = Field(None, description="SVG representation of the matched substructure")
     trivial_name: TrivialName = Field(..., description="Pattern information")
 
 
 class MoleculeAnnotation(BaseModel):
     """Complete annotation of a molecule with functional groups."""
-    name: Optional[str] = Field(None, description="Molecule name (if available)")
+    name: str = Field(default="Unnamed", description="Molecule name (defaults to 'Unnamed' if not provided)")
     svg: str = Field(..., description="SVG image representation of the molecule")
     smiles: str = Field(..., description="Canonical SMILES string")
     matches: List[AnnotationMatch] = Field(default_factory=list, description="List of matched functional groups")
@@ -321,12 +322,14 @@ class AgentChatResponse(BaseModel):
     status: str = Field(default="success", description="Status of the request")
     response_type: Optional[str] = Field(
         None, 
-        description="Type of response: 'annotation', 'query_set', 'bioisosteres', 'admet', 'multi_bioisostere', 'multi_admet', 'text_only'"
+        description="Type of response: 'annotation', 'query_set', 'bioisosteres', 'admet', "
+                    "'molecule_with_admet', 'molecule_with_bioisostere', "
+                    "'multi_bioisostere', 'multi_admet', 'combined', 'text_only'"
     )
     tool_calls: Optional[List[MCPToolCall]] = Field(None, description="MCP tools called during processing")
     structured_data: Optional[Dict[str, Any]] = Field(None, description="Any structured data extracted from the response")
     
-    # Typed structured outputs (mutually exclusive based on response_type)
+    # Typed structured outputs (can have multiple fields populated in combined responses)
     molecule_data: Optional[MoleculeAnnotation] = Field(None, description="Present when response_type='annotation'")
     query_set_data: Optional[SmilesQuerySet] = Field(None, description="Present when response_type='query_set'")
     bioisostere_data: Optional[BioisostereScanResult] = Field(None, description="Present when response_type='bioisosteres'")

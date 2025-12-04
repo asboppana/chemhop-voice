@@ -1,7 +1,7 @@
 # Makefile for Development
 # Quick access to common commands
 
-.PHONY: help dev-local dev-docker frontend
+.PHONY: help dev-local dev-docker dev-final frontend
 
 # Default target
 help:
@@ -10,6 +10,7 @@ help:
 	@echo "Backend:"
 	@echo "  make dev-local        🚀 Start backend locally (no Docker)"
 	@echo "  make dev-docker       🐳 Start backend with Docker"
+	@echo "  make dev-final        🎯 Start FULL stack (MCP servers + ngrok + backend)"
 	@echo "  make stop-docker      Stop Docker services"
 	@echo ""
 	@echo "Frontend:"
@@ -25,6 +26,11 @@ dev-local:
 	@echo "🚀 Starting backend locally..."
 	@echo "Starting FastAPI server..."
 	@uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Full development stack with MCP servers and ngrok
+dev-final:
+	@echo "🎯 Starting full development stack..."
+	@./dev_start.sh
 
 # Docker development
 dev-docker:

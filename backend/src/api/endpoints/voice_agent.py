@@ -127,10 +127,22 @@ def extract_structured_data(response_text: str) -> Tuple[str, List[Dict[str, Any
             except json.JSONDecodeError:
                 continue
     
-    # Handle multiple bioisostere or admet results
+    # Handle multiple results
     if len(structured_objects) > 1:
         types = [obj.get("type") for obj in structured_objects]
-        if all(t == "bioisostere_structured" for t in types):
+        unique_types = set(types)
+        
+        # Check for mixed types (e.g., molecule + admet)
+        if len(unique_types) > 1:
+            # Determine combined response type
+            if "molecule_structured" in unique_types and "admet_structured" in unique_types:
+                response_type = "molecule_with_admet"
+            elif "molecule_structured" in unique_types and "bioisostere_structured" in unique_types:
+                response_type = "molecule_with_bioisostere"
+            else:
+                response_type = "combined"
+        # All same type
+        elif all(t == "bioisostere_structured" for t in types):
             response_type = "multi_bioisostere"
         elif all(t == "admet_structured" for t in types):
             response_type = "multi_admet"
@@ -164,8 +176,11 @@ async def chat_with_agent(request: ChatRequest) -> AgentChatResponse:
     - query_set: Set of SMILES extracted from user intent
     - bioisosteres: Single bioisostere scan result
     - admet: Single ADMET prediction
+    - molecule_with_admet: Molecule annotation + ADMET prediction (both fields populated)
+    - molecule_with_bioisostere: Molecule annotation + bioisostere results (both fields populated)
     - multi_bioisostere: Multiple bioisostere results (e.g., for "A OR B")
     - multi_admet: Multiple ADMET predictions
+    - combined: Other combinations of structured data
     - text_only: Pure text response (no structured data)
     
     Args:
@@ -253,8 +268,11 @@ async def chat_with_agent(request: ChatRequest) -> AgentChatResponse:
         _debug_print(f"response_type: {response.response_type}", _COLOR_RED)
         _debug_print(f"response text: {response.response[:200]}..." if response.response else "None", _COLOR_RED)
         _debug_print(f"molecule_data: {'YES' if response.molecule_data else 'NO'}", _COLOR_RED)
+        _debug_print(f"query_set_data: {'YES' if response.query_set_data else 'NO'}", _COLOR_RED)
         _debug_print(f"bioisostere_data: {'YES' if response.bioisostere_data else 'NO'}", _COLOR_RED)
         _debug_print(f"admet_data: {'YES' if response.admet_data else 'NO'}", _COLOR_RED)
+        _debug_print(f"multi_bioisostere_data: {'YES' if response.multi_bioisostere_data else 'NO'}", _COLOR_RED)
+        _debug_print(f"multi_admet_data: {'YES' if response.multi_admet_data else 'NO'}", _COLOR_RED)
         _debug_print(f"======================", _COLOR_RED)
         
         return response
@@ -282,44 +300,57 @@ def _populate_typed_fields(
     response_type: str
 ) -> AgentChatResponse:
     """
-    Populate the typed data fields based on structured objects and response type.
+    Populate the typed data fields based on structured objects.
+    This now handles multiple different types in a single response.
     """
     try:
-        if response_type == "annotation" and structured_objects:
-            obj = structured_objects[0]
-            if "annotation" in obj:
-                response.molecule_data = MoleculeAnnotation(**obj["annotation"])
-            elif "smiles" in obj and "matches" in obj:
-                response.molecule_data = MoleculeAnnotation(**obj)
-                
-        elif response_type == "query_set" and structured_objects:
-            obj = structured_objects[0]
-            if "query_set" in obj:
-                response.query_set_data = SmilesQuerySet(**obj["query_set"])
-            else:
-                response.query_set_data = SmilesQuerySet(**obj)
-                
-        elif response_type == "bioisosteres" and structured_objects:
-            obj = structured_objects[0]
-            response.bioisostere_data = BioisostereScanResult(
-                query_smiles=obj.get("query_smiles", ""),
-                num_results=len(obj.get("results", [])),
-                results=obj.get("results", [])
-            )
+        # Process each structured object and populate the appropriate field
+        # Use independent if statements (not elif) to handle multiple types
+        for obj in structured_objects:
+            obj_type = obj.get("type", "")
             
-        elif response_type == "admet" and structured_objects:
-            obj = structured_objects[0]
-            response.admet_data = ADMETPropertyResult(
-                smiles=obj.get("smiles", ""),
-                predictions=obj.get("predictions", {})
-            )
-            
-        elif response_type == "multi_bioisostere" and structured_objects:
-            # TODO: Build MultiQueryBioisostereResult from multiple objects
+            if obj_type == "molecule_structured":
+                # Populate molecule_data
+                if "annotation" in obj:
+                    # Merge top-level smiles into annotation if missing
+                    annotation_data = obj["annotation"].copy()
+                    if "smiles" not in annotation_data and "smiles" in obj:
+                        annotation_data["smiles"] = obj["smiles"]
+                    response.molecule_data = MoleculeAnnotation(**annotation_data)
+                elif "smiles" in obj and "matches" in obj:
+                    response.molecule_data = MoleculeAnnotation(**obj)
+                    
+            elif obj_type == "query_set_structured":
+                # Populate query_set_data
+                if "query_set" in obj:
+                    response.query_set_data = SmilesQuerySet(**obj["query_set"])
+                else:
+                    response.query_set_data = SmilesQuerySet(**obj)
+                    
+            elif obj_type == "bioisostere_structured":
+                # Populate bioisostere_data (single result)
+                response.bioisostere_data = BioisostereScanResult(
+                    query_smiles=obj.get("query_smiles", ""),
+                    source_group=obj.get("source_group"),
+                    atom_indices=obj.get("atom_indices"),
+                    num_results=len(obj.get("results", [])),
+                    results=obj.get("results", [])
+                )
+                
+            elif obj_type == "admet_structured":
+                # Populate admet_data (single result)
+                response.admet_data = ADMETPropertyResult(
+                    smiles=obj.get("smiles", ""),
+                    predictions=obj.get("predictions", {})
+                )
+        
+        # Handle multi-query results (all same type)
+        if response_type == "multi_bioisostere":
+            # TODO: Build MultiQueryBioisostereResult from multiple bioisostere objects
             pass
             
-        elif response_type == "multi_admet" and structured_objects:
-            # TODO: Build MultiQueryADMETResult from multiple objects
+        elif response_type == "multi_admet":
+            # TODO: Build MultiQueryADMETResult from multiple admet objects
             pass
             
     except Exception as e:

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { analyzeMolecule, highlightMolecule, scanBioisosteres, generateSvg } from '@/services/moleculeService';
 import type { MoleculeAnalysisResponse, BioisostereScanResponse } from '@/services/moleculeService';
+import { useStructuredData, setMoleculeContext, clearMoleculeContext } from '@/hooks/useStructuredData';
+import type { ParsedChatResponse } from '@/utils/chatResponseHandler';
+import { FloatingNullState } from '@/components/animations/FloatingNullState';
 
 // Helper function to convert index to letter (0 -> A, 1 -> B, etc.)
 const indexToLetter = (index: number): string => {
@@ -35,6 +38,129 @@ export const ChemistryMainPage: React.FC = () => {
   const [scanningQueries, setScanningQueries] = useState(false);
   const [bioisostereSvgs, setBioisostereSvgs] = useState<Map<string, string>>(new Map()); // SMILES -> SVG
   const [loadingSvgs, setLoadingSvgs] = useState(false);
+
+  // ===========================================================================
+  // STRUCTURED DATA FROM CHAT
+  // ===========================================================================
+  // Subscribe to chat response events and handle them appropriately
+  // Uses the onData callback pattern - latestData is available but not needed here
+  useStructuredData({
+    onData: handleStructuredDataFromChat,
+  });
+
+  /**
+   * Handle structured data from chat responses.
+   * Maps each response type to the appropriate state update.
+   * 
+   * Response Types → Actions:
+   * - RENDER_MOLECULE     → setResult with molecule annotation
+   * - RENDER_BIOISOSTERES → setBioisostereResults with scan results
+   * - RENDER_QUERY_SET    → (optional) show pending query targets
+   * - RENDER_ADMET        → (future) show ADMET predictions
+   */
+  function handleStructuredDataFromChat(data: ParsedChatResponse) {
+    console.log('🧪 MainPage received structured data:', data.action);
+    
+    switch (data.action) {
+      case 'RENDER_MOLECULE':
+        if (data.moleculeData) {
+          // Update molecule visualization
+          setResult(data.moleculeData);
+          setAnalyzedSmiles(data.moleculeData.smiles);
+          setDisplayedSvg(data.moleculeData.svg);
+          // Reset other state
+          setSelectedPatterns(new Set());
+          setExpressionGroups([]);
+          setBioisostereResults(new Map());
+          setError(null);
+          console.log('✅ Molecule rendered:', data.moleculeData.smiles);
+        }
+        break;
+        
+      case 'RENDER_BIOISOSTERES':
+        if (data.bioisostereData) {
+          // Convert to the Map format expected by the UI
+          // For chat responses, we use index 0 as the key
+          const newResults = new Map<number, BioisostereScanResponse>();
+          newResults.set(0, {
+            query_smiles: data.bioisostereData.query_smiles,
+            num_matches: data.bioisostereData.num_results,
+            matches: data.bioisostereData.results.map(r => ({
+              source: r.source,
+              similarity: r.similarity,
+              centroid_smiles: r.centroid_smiles,
+              bio_isostere_score: r.bio_isostere_score,
+              pharmacophore_similarity: r.pharmacophore_similarity || 0,
+              topology_similarity: r.topology_similarity || 0,
+              cluster_id: undefined,
+              num_members: 1,
+              example_smiles: [],
+              descriptors: r.descriptors,
+              delta_properties: r.delta_properties || {},
+            })),
+          });
+          setBioisostereResults(newResults);
+          console.log('✅ Bioisosteres rendered:', data.bioisostereData.num_results, 'results');
+        }
+        break;
+        
+      case 'RENDER_MULTI_BIO':
+        if (data.multiBioisostereData) {
+          // Convert array of results to Map
+          const newResults = new Map<number, BioisostereScanResponse>();
+          data.multiBioisostereData.forEach((scanResult, index) => {
+            newResults.set(index, {
+              query_smiles: scanResult.query_smiles,
+              num_matches: scanResult.num_results,
+              matches: scanResult.results.map(r => ({
+                source: r.source,
+                similarity: r.similarity,
+                centroid_smiles: r.centroid_smiles,
+                bio_isostere_score: r.bio_isostere_score,
+                pharmacophore_similarity: r.pharmacophore_similarity || 0,
+                topology_similarity: r.topology_similarity || 0,
+                cluster_id: undefined,
+                num_members: 1,
+                example_smiles: [],
+                descriptors: r.descriptors,
+                delta_properties: r.delta_properties || {},
+              })),
+            });
+          });
+          setBioisostereResults(newResults);
+          console.log('✅ Multi-bioisosteres rendered:', newResults.size, 'query results');
+        }
+        break;
+        
+      case 'RENDER_QUERY_SET':
+        if (data.querySetData) {
+          // Query set shows targets that will be queried
+          // Could display as pending state or just log
+          console.log('📋 Query set received:', data.querySetData.targets?.length, 'targets');
+          // Optionally: set some UI state to show pending queries
+        }
+        break;
+        
+      case 'RENDER_ADMET':
+        if (data.admetData) {
+          // TODO: Implement ADMET visualization
+          console.log('📊 ADMET data received:', Object.keys(data.admetData.predictions).length, 'properties');
+        }
+        break;
+        
+      case 'RENDER_MULTI_ADMET':
+        if (data.multiAdmetData) {
+          // TODO: Implement multi-ADMET visualization
+          console.log('📊 Multi-ADMET data received:', data.multiAdmetData.length, 'molecules');
+        }
+        break;
+        
+      case 'RENDER_TEXT':
+      default:
+        // Text-only responses don't affect MainPage visualization
+        break;
+    }
+  }
 
   // Generate SVGs for bio-isostere results
   useEffect(() => {
@@ -74,7 +200,47 @@ export const ChemistryMainPage: React.FC = () => {
     generateBioisostereSvgs();
   }, [bioisostereResults]);
 
-  const handleAnalyzeMolecule = async (smiles: string) => {
+  // ===========================================================================
+  // PUBLISH MOLECULE CONTEXT FOR CHAT
+  // ===========================================================================
+  // When molecule analysis changes, publish the context so ChatContext can
+  // include it in conversation history for the backend to reference
+  useEffect(() => {
+    if (!result || !analyzedSmiles) {
+      clearMoleculeContext();
+      return;
+    }
+
+    // Filter for cyclic/biological/ring patterns (same filter used in UI)
+    const filteredMatches = result.matches.filter(match => 
+      match.trivial_name.group.toLowerCase().includes('cyclic') ||
+      match.trivial_name.group.toLowerCase().includes('biological') ||
+      match.trivial_name.group.toLowerCase().includes('ring')
+    );
+
+    // Build pattern info array
+    const patterns = filteredMatches.map((match, index) => ({
+      letter: indexToLetter(index),
+      name: match.trivial_name.name,
+      smiles: match.trivial_name.smarts,
+      atomIndices: match.atom_indices,
+    }));
+
+    // Publish context
+    setMoleculeContext({
+      smiles: analyzedSmiles,
+      name: result.name,
+      patterns,
+      timestamp: Date.now(),
+    });
+
+    // Cleanup when component unmounts
+    return () => {
+      clearMoleculeContext();
+    };
+  }, [result, analyzedSmiles]);
+
+  const handleAnalyzeMolecule = async (smiles: string, moleculeName?: string) => {
     if (!smiles.trim()) {
       setError('Please enter a SMILES string');
       return;
@@ -85,14 +251,19 @@ export const ChemistryMainPage: React.FC = () => {
     
     try {
       const response = await analyzeMolecule(smiles);
-      setResult(response);
+      // If we have a provided name (e.g., from example molecules), use it
+      // Otherwise use the backend's response name
+      const resultWithName = moleculeName 
+        ? { ...response, name: moleculeName }
+        : response;
+      setResult(resultWithName);
       setAnalyzedSmiles(smiles); // Store the original SMILES for highlighting
       setDisplayedSvg(response.svg);
       // Reset selection state
       setSelectedPatterns(new Set());
       setExpressionGroups([]);
       setBioisostereResults(new Map());
-      console.log('Molecule analysis result:', response);
+      console.log('Molecule analysis result:', resultWithName);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to analyze molecule');
       console.error('Error analyzing molecule:', err);
@@ -235,11 +406,9 @@ export const ChemistryMainPage: React.FC = () => {
       {/* Main content area */}
       <div className="min-h-full">
         {loading && (
-          <div className="flex items-center justify-center min-h-[60vh] py-20">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-              <p className="text-sm text-gray-600">Analyzing molecule...</p>
-            </div>
+          <div className="flex flex-col items-center justify-center min-h-[60vh] py-20">
+            <FloatingNullState compact={true} />
+            <p className="text-sm text-gray-600 mt-8">Analyzing molecule...</p>
           </div>
         )}
 
@@ -256,11 +425,11 @@ export const ChemistryMainPage: React.FC = () => {
           <div className="flex flex-col items-center justify-start w-full pt-16 pb-8">
             {/* Welcome header */}
             <div className="text-center mb-10">
-              <div className="w-16 h-16 mx-auto mb-5 rounded-xl bg-gray-100 flex items-center justify-center border border-gray-200">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-xl bg-gray-100 flex items-center justify-center border border-gray-500">
                 <img src="/icons/Beaker.svg" alt="Beaker" className="w-8 h-8" />
               </div>
               <h1 className="text-2xl font-medium text-black mb-3">
-                ChemHop-Voice
+                ChemHop Voice
               </h1>
               <p className="text-base text-gray-1000">
                 Analyze molecular structures and discover bioisostere replacements
@@ -269,14 +438,14 @@ export const ChemistryMainPage: React.FC = () => {
 
             {/* Example molecules grid */}
             <div className="w-full max-w-lg px-4">
-              <p className="text-xs uppercase tracking-widest text-gray-600 mb-4 text-center font-medium">
+              <p className="text-xs uppercase tracking-[0.02em] text-gray-600 mb-4 text-center font-medium">
                 Try an example
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {EXAMPLE_MOLECULES.map((example) => (
                   <button
                     key={example.smiles}
-                    onClick={() => handleAnalyzeMolecule(example.smiles)}
+                    onClick={() => handleAnalyzeMolecule(example.smiles, example.name)}
                     className="group text-left px-4 py-3.5 rounded-lg border border-gray-200 hover:border-gray-300 hover:scale-[0.98] hover:shadow-md transition-all duration-300"
                   >
                     <p className="text-sm font-semibold text-gray-900 group-hover:text-black">
@@ -299,8 +468,12 @@ export const ChemistryMainPage: React.FC = () => {
               {/* SVG Visualization - Larger box on left */}
               <div className="flex-shrink-0 w-full lg:w-auto">
                 <div className="flex items-center h-8 mb-3">
-                  <h3 className="text-sm font-medium uppercase tracking-wider text-black">
-                    Source Molecule
+                  <h3 className="text-sm font-medium uppercase tracking-[0.02em] text-black">
+                    {result.name && result.name !== 'No Name' && result.name !== 'Unknown' ? (
+                      <>{result.name} <span className="text-[9px] pl-1 text-gray-1000">[Source Molecule]</span></>
+                    ) : (
+                      'Source Molecule'
+                    )}
                   </h3>
                 </div>
                 <div className="border border-gray-300 rounded-lg p-4 bg-white w-full max-w-md mx-auto lg:mx-0 aspect-square lg:w-96 relative">
@@ -319,13 +492,13 @@ export const ChemistryMainPage: React.FC = () => {
                 {/* Query display */}
                 {expressionGroups.length > 0 && (
                   <div className="mt-4 p-3 bg-gray-100 rounded-lg max-w-md mx-auto lg:mx-0">
-                    <p className="text-[9px] uppercase tracking-wider text-gray-600 mb-1.5">Queries</p>
+                    <p className="text-[9px] uppercase tracking-[0.02em] text-gray-1500 font-medium mb-1.5">Queries</p>
                     <div className="space-y-0.5 mb-3">
                       {buildExpressionLines().map((line, idx) => (
                         <div key={idx} className="flex items-baseline gap-1.5">
                           <span className="text-sm font-medium text-gray-1000 w-6 text-left flex-shrink-0">{idx + 1}.</span>
                           <span className="text-sm font-mono font-medium text-black flex-1">{line.expression}</span>
-                          <span className="text-[10px] text-gray-600 font-mono flex-shrink-0">({line.variants})</span>
+                          <span className="text-[10px] text-gray-600 font-mono flex-shrink-0">[{line.variants}]</span>
                         </div>
                       ))}
                     </div>
@@ -361,13 +534,13 @@ export const ChemistryMainPage: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     {/* Header with + button */}
                     <div className="flex items-center justify-between h-8 mb-3">
-                      <h3 className="text-sm font-medium uppercase tracking-wider text-black">
-                        Patterns <span className="text-gray-1500">({filteredMatches.length})</span>
+                      <h3 className="text-sm font-medium uppercase tracking-[0.02em] text-black">
+                        Patterns <span className="text-sm pl-1 text-gray-1000">[{filteredMatches.length}]</span>
                       </h3>
                       <div className="flex items-center gap-2.5">
                         {/* Variant count input */}
                         <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
-                          <label htmlFor="variant-count" className="text-xs uppercase tracking-wider text-gray-1500 font-medium">
+                          <label htmlFor="variant-count" className="text-xs uppercase tracking-[0.02em] text-gray-1500 font-medium">
                             Variants
                           </label>
                           <input
@@ -384,7 +557,7 @@ export const ChemistryMainPage: React.FC = () => {
                         <button
                           onClick={handleAddQuery}
                           disabled={selectedPatterns.size === 0}
-                          className={`w-7 h-7 rounded-full font-semibold text-base transition-all flex items-center justify-center ${
+                          className={`w-7 h-7 rounded-full font-semibold text-base tracking-[0.02em] transition-all flex items-center justify-center ${
                             selectedPatterns.size > 0
                               ? 'bg-black text-white hover:bg-gray-800'
                               : 'bg-gray-200 text-gray-500 cursor-not-allowed'
@@ -452,7 +625,7 @@ export const ChemistryMainPage: React.FC = () => {
 
               return (
                 <div className="mt-12">
-                  <h2 className="text-lg font-light mb-6 uppercase tracking-wider text-black">
+                  <h2 className="text-lg font-medium mb-6 uppercase tracking-[0.02em] text-black">
                     Bioisostere Results
                   </h2>
                   

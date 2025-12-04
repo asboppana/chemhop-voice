@@ -2,6 +2,8 @@ import React, { createContext, useContext, useReducer, useEffect, useRef, useCal
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile';
 import { voiceASR, type VoiceASRCallbacks } from '@/services/elevenLabs';
 import server from '@/app/server';
+import { parseAgentResponse, debugLogParsedResponse } from '@/utils/chatResponseHandler';
+import { dispatchStructuredData, getMoleculeContextString } from '@/hooks/useStructuredData';
 
 export interface Message {
   id: string;
@@ -218,18 +220,36 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     
     try {
       // Build conversation history for context - only last 3 messages
-      const conversationHistory = state.messages
+      const conversationHistory: Array<{ role: 'user' | 'assistant', content: string }> = [];
+      
+      // Add recent message history
+      state.messages
         .filter(m => !m.isStreaming) // Only include finalized messages
         .slice(-3) // Keep only last 3 messages for context
-        .map(m => ({
-          role: m.type === 'user' ? 'user' as const : 'assistant' as const,
-          content: m.content
-        }));
+        .forEach(m => {
+          conversationHistory.push({
+            role: m.type === 'user' ? 'user' as const : 'assistant' as const,
+            content: m.content
+          });
+        });
       
-      // Add current user message
+      // =========================================================================
+      // APPEND MOLECULE CONTEXT TO USER MESSAGE IF AVAILABLE
+      // =========================================================================
+      // This allows the backend to understand references like "structure A",
+      // "permute pattern B", etc. by providing the current molecule state
+      // We append it to the user message so the LLM has context about the molecule
+      const moleculeContext = getMoleculeContextString();
+      let finalUserMessage = userMessage;
+      if (moleculeContext) {
+        finalUserMessage = `${userMessage}\n\n${moleculeContext}`;
+        console.log('🧬 Including molecule context in user message');
+      }
+      
+      // Add current user message (with optional molecule context appended)
       conversationHistory.push({
         role: 'user',
-        content: userMessage
+        content: finalUserMessage
       });
       
       // Call backend
@@ -237,25 +257,40 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         messages: conversationHistory
       });
       
-      // Add assistant response to chat
+      // =========================================================================
+      // PARSE RESPONSE USING chatResponseHandler
+      // =========================================================================
+      // This maps backend response types to frontend render actions:
+      //   - text_only       → RENDER_TEXT
+      //   - annotation      → RENDER_MOLECULE
+      //   - query_set       → RENDER_QUERY_SET
+      //   - bioisosteres    → RENDER_BIOISOSTERES
+      //   - admet           → RENDER_ADMET
+      //   - multi_bioisostere → RENDER_MULTI_BIO
+      //   - multi_admet     → RENDER_MULTI_ADMET
+      // =========================================================================
+      const parsed = parseAgentResponse(response);
+      
+      // Debug log in development
+      if (import.meta.env.DEV) {
+        debugLogParsedResponse(parsed);
+      }
+      
+      // Add assistant response text to chat
       dispatch({
         type: 'ADD_MESSAGE',
         message: {
           id: generateMessageId(),
           type: 'assistant',
-          content: response.response || response.text || 'No response',
+          content: parsed.textContent || 'No response',
           timestamp: new Date(),
           isStreaming: false
         }
       });
       
-      console.log('📦 Backend response:', response);
-      
-      // TODO: Handle structured JSON for main page display
-      // You can emit an event or use a callback to pass structured data to MainPage
-      if (response.structured) {
-        console.log('📊 Structured data:', response.structured);
-        // window.dispatchEvent(new CustomEvent('structured-data', { detail: response.structured }));
+      // Dispatch structured data to MainPage if present
+      if (parsed.hasStructuredData) {
+        dispatchStructuredData(parsed);
       }
       
     } catch (error) {
@@ -278,6 +313,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Send a text message (from typed input)
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
+    
+    // Count words to filter out short messages
+    const wordCount = content.trim().split(/\s+/).filter(w => w.length > 0).length;
+    
+    if (wordCount < 5) {
+      console.log(`🚫 Message too short (${wordCount} words), minimum 5 words required`);
+      return;
+    }
     
     // Add user message to chat immediately
     dispatch({
@@ -316,6 +359,21 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         if (isFinal) {
           // Finalize the message and call backend
           if (currentUserMessageRef.current) {
+            // Count words to filter out short/noise transcripts
+            const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+            
+            if (wordCount < 5) {
+              console.log(`🚫 Ignoring short transcript (${wordCount} words): "${text}"`);
+              // Remove the streaming message
+              dispatch({
+                type: 'UPDATE_MESSAGE',
+                id: currentUserMessageRef.current,
+                content: text
+              });
+              currentUserMessageRef.current = null;
+              return;
+            }
+            
             // Update message to be final
             dispatch({
               type: 'UPDATE_MESSAGE',

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { XClose } from '@/components/ui/XClose';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useChatContext, type Message } from '@/contexts/ChatContext';
+import RotatingSedonaLogo from '@/components/animations/RotatingSedonaLogo';
 
 // Configuration for chat panel positioning and behavior
 const CHAT_CONFIG = {
@@ -43,6 +44,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     height: window.innerHeight - CHAT_CONFIG.FLOATING_TOP_OFFSET - CHAT_CONFIG.FLOATING_BOTTOM_OFFSET
   });
   
+  // Progressive loading states
+  const [loadingMessage, setLoadingMessage] = useState('Thinking...');
+  
   const {
     state: { messages, mode, voiceActive, isLoading },
     shouldShowInlineChat,
@@ -57,10 +61,37 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   // Don't render if this mode isn't active
   const shouldRender = isInlineMode ? shouldShowInlineChat : shouldShowFloatingChat;
 
-  // Auto-scroll to bottom when new messages arrive
+  // Progressive loading messages based on elapsed time
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessage('Thinking...');
+      return;
+    }
+    
+    // Reset to initial message
+    setLoadingMessage('Thinking...');
+    
+    // After 5 seconds, change to "Searching Literature..."
+    const timer1 = setTimeout(() => {
+      setLoadingMessage('Searching Literature...');
+    }, 5000);
+    
+    // After 15 seconds, change to "Cross Checking Sources..."
+    const timer2 = setTimeout(() => {
+      setLoadingMessage('Cross Checking Sources...');
+    }, 15000);
+    
+    // Cleanup timers when loading stops or component unmounts
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [isLoading]);
+
+  // Auto-scroll to bottom when new messages arrive or loading state changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isLoading, loadingMessage]);
 
   if (!shouldRender) return null;
 
@@ -120,37 +151,56 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             <p className="text-sm font-medium text-white/70">Let's start designing new molecules.</p>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              {message.type === 'user' ? (
-                // User message - light blue bubble
-                <div className="max-w-[75%] px-4 py-2 rounded-2xl text-sm" style={{ backgroundColor: 'rgb(232, 243, 254)' }}>
-                  <p className="whitespace-pre-wrap text-gray-1500 font-medium">
-                    {message.content}
-                    {message.isStreaming && (
-                      <span className="inline-block w-px h-4 bg-black ml-1 animate-pulse translate-y-px" />
-                    )}
-                  </p>
-                  <p className="text-xs mt-1 text-gray-1000">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              ) : (
-                // Assistant message - no bubble, just text
-                <div className="max-w-[85%] text-sm">
-                  <p className="whitespace-pre-wrap text-white font-medium leading-relaxed">
-                    {message.content}
-                  </p>
-                  <p className="text-xs mt-1 text-gray-500">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              )}
+          messages.map((message, index) => {
+            // Only show cursor for the last message when it's actively streaming
+            const isLastMessage = index === messages.length - 1;
+            const shouldShowCursor = isLastMessage && message.isStreaming;
+            
+            return (
+              <div
+                key={message.id}
+                className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {message.type === 'user' ? (
+                  // User message - light blue bubble
+                  <div className="max-w-[75%] px-4 py-2 rounded-2xl text-sm bg-gray-500">
+                    <p className="whitespace-pre-wrap text-gray-1500 font-medium">
+                      {message.content}
+                      {shouldShowCursor && (
+                        <span className="inline-block w-px h-4 bg-black ml-1 animate-pulse translate-y-px" />
+                      )}
+                    </p>
+                    <p className="text-xs mt-1 text-gray-1000">
+                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                ) : (
+                  // Assistant message - no bubble, just text
+                  <div className="max-w-[85%] text-sm">
+                    <p className="whitespace-pre-wrap text-white font-medium leading-relaxed">
+                      {message.content}
+                      {shouldShowCursor && (
+                        <span className="inline-block w-px h-4 bg-white ml-1 animate-pulse translate-y-px" />
+                      )}
+                    </p>
+                    <p className="text-xs mt-1 text-gray-500">
+                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+        
+        {/* Thinking indicator - shows during backend processing */}
+        {isLoading && (
+          <div className="flex gap-3 justify-start">
+            <div className="flex items-center gap-2 px-4 py-3 text-sm text-white">
+              <RotatingSedonaLogo size={16} color="white" easing="exponential" />
+              <span className="text-white/70 font-medium">{loadingMessage}</span>
             </div>
-          ))
+          </div>
         )}
         
         <div ref={messagesEndRef} />
@@ -281,7 +331,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     // When parent is orchestrating the inline animation, render without internal motion
     if (parentControlsInlineAnimation) {
       return (
-        <div className="h-full bg-black flex flex-col overflow-hidden rounded-tl-[24px] rounded-bl-[24px]">
+        <div className="h-full bg-black flex flex-col overflow-hidden rounded-tl-[24px] rounded-tr-[24px] rounded-br-[24px]">
           {renderHeader()}
           {renderMessages()}
           {renderInput()}
@@ -291,7 +341,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
     return (
       <motion.div 
-        className="h-full bg-black flex flex-col overflow-hidden rounded-tl-[24px] rounded-bl-[24px]"
+        className="h-full bg-black flex flex-col overflow-hidden rounded-tl-[24px] rounded-tr-[24px] rounded-br-[24px]"
         initial={{ x: '100%', opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: '100%', opacity: 0 }}
@@ -317,7 +367,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={closeChat}
-          className="fixed inset-0 bg-black bg-opacity-20 z-50"
+          className="fixed inset-0 bg-black bg-opacity-20 z-40"
           transition={{
             duration: 0.3,
             ease: 'linear'

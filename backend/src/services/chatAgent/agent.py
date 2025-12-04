@@ -39,14 +39,18 @@ def _dbg_print(color: str, message: str) -> None:
 def _get_mcp_server_url(server_label: str) -> str:
     """
     Get MCP server URL for SSE transport.
-    Set MCP_SERVER_URL env var to override.
+    Reads from environment variables set by dev_start.sh or falls back to hardcoded values.
+    
+    Environment variables:
+    - PHASE1_MCP_URL: URL for phase1_pipeline_mcp server
+    - PHASE2_MCP_URL: URL for phase2_pipeline_mcp server
     """
-    # Use env var if set, otherwise default to local MCP SSE server
-    # For ngrok: export MCP_SERVER_URL=https://your-ngrok-url.ngrok-free.app/sse
     if server_label == "phase1_pipeline_mcp":
-        return "https://f38a55f3121b.ngrok-free.app/sse"
+        # Try env var first, then fall back to hardcoded ngrok URL
+        return os.getenv("PHASE1_MCP_URL", "https://f38a55f3121b.ngrok-free.app/sse")
     elif server_label == "phase2_pipeline_mcp":
-        return "https://kaycee-radiculose-novelistically.ngrok-free.dev/sse"
+        # Try env var first, then fall back to hardcoded ngrok URL
+        return os.getenv("PHASE2_MCP_URL", "https://kaycee-radiculose-novelistically.ngrok-free.dev/sse")
     else:   
         raise ValueError(f"Invalid server label: {server_label}")
 
